@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 
@@ -233,6 +234,18 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {/* 비밀번호 찾기 링크 (로그인 모드에서만 표시) */}
+            {isLogin && (
+              <div className="flex justify-end -mt-2">
+                <Link
+                  href="/reset-password"
+                  className="text-xs text-primary hover:underline"
+                >
+                  비밀번호를 잊으셨나요?
+                </Link>
+              </div>
+            )}
 
             {/* 비밀번호 확인 (회원가입 모드에서만 표시) */}
             {!isLogin && (
