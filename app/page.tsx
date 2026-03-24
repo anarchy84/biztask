@@ -1,8 +1,15 @@
 // 파일 위치: app/page.tsx
-// 용도: 메인 홈 화면 - 레딧/블라인드 스타일 3단 레이아웃
-// 변경: 하드코딩 더미 데이터 → Supabase에서 실시간 데이터 fetch
-// 이 파일은 서버 컴포넌트(Server Component)로, 빌드/요청 시 서버에서 DB를 조회합니다.
+// 용도: 메인 홈 화면 - 레딧 스타일 3단 레이아웃
+// 기능: 카테고리 필터링 (?category=사업) + 정렬 (?sort=popular|latest|rising)
+//       추천 토글 + 게시글 클릭 시 상세 페이지 이동
 
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { supabase } from "@/utils/supabase/client";
+import FeaturedSlider from "@/app/components/FeaturedSlider";
 import {
   ArrowBigUp,
   ArrowBigDown,
@@ -19,11 +26,12 @@ import {
   Clock,
   ChevronRight,
   Inbox,
+  Loader2,
+  LayoutGrid,
 } from "lucide-react";
-import { createServerSupabaseClient } from "@/utils/supabase/server";
+import type { User } from "@supabase/supabase-js";
 
-// ─── 타입 정의: Supabase에서 가져올 게시글 + 작성자 정보 ───
-// Supabase의 JOIN 결과는 배열로 올 수 있으므로 배열 | 단일객체 둘 다 허용
+// ─── 타입 정의 ───
 type ProfileInfo = {
   nickname: string;
   avatar_url: string | null;
@@ -41,24 +49,34 @@ type PostWithAuthor = {
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
-// profiles 필드에서 닉네임을 안전하게 추출하는 헬퍼 함수
+type TrendingPost = {
+  id: string;
+  title: string;
+  comment_count: number;
+};
+
+// ─── 헬퍼 함수들 ───
+
 function getAuthorNickname(profiles: PostWithAuthor["profiles"]): string {
   if (!profiles) return "익명";
   if (Array.isArray(profiles)) return profiles[0]?.nickname || "익명";
   return profiles.nickname || "익명";
 }
 
-// ─── 좌측 메뉴 카테고리 목록 ───
-const CATEGORIES = [
-  { name: "인기글", icon: Flame, color: "text-red-500" },
-  { name: "최신글", icon: Clock, color: "text-blue-500" },
-  { name: "사업", icon: Briefcase, color: "text-orange-500" },
-  { name: "마케팅", icon: Megaphone, color: "text-purple-500" },
-  { name: "커리어", icon: GraduationCap, color: "text-green-500" },
-  { name: "자유", icon: Coffee, color: "text-amber-500" },
-];
+function timeAgo(dateString: string): string {
+  const now = new Date();
+  const past = new Date(dateString);
+  const diffMs = now.getTime() - past.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMs / 3600000);
+  const diffDay = Math.floor(diffMs / 86400000);
+  if (diffMin < 1) return "방금 전";
+  if (diffMin < 60) return `${diffMin}분 전`;
+  if (diffHour < 24) return `${diffHour}시간 전`;
+  if (diffDay < 30) return `${diffDay}일 전`;
+  return `${Math.floor(diffDay / 30)}개월 전`;
+}
 
-// ─── 카테고리별 색상 매핑 ───
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
     사업: "bg-orange-100 text-orange-700",
@@ -69,61 +87,208 @@ function getCategoryColor(category: string): string {
   return colorMap[category] || "bg-gray-100 text-gray-700";
 }
 
-// ─── 날짜를 "n시간 전", "n일 전" 형태로 변환하는 함수 ───
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const past = new Date(dateString);
-  const diffMs = now.getTime() - past.getTime(); // 밀리초 차이
-  const diffMin = Math.floor(diffMs / 60000); // 분 차이
-  const diffHour = Math.floor(diffMs / 3600000); // 시간 차이
-  const diffDay = Math.floor(diffMs / 86400000); // 일 차이
+// ─── 좌측 메뉴 카테고리 정의 ───
+// href에 ?category= 파라미터를 사용하여 필터링
+const SIDEBAR_CATEGORIES = [
+  { name: "전체", icon: LayoutGrid, color: "text-blue-500", href: "/" },
+  { name: "사업", icon: Briefcase, color: "text-orange-500", href: "/?category=사업" },
+  { name: "마케팅", icon: Megaphone, color: "text-purple-500", href: "/?category=마케팅" },
+  { name: "커리어", icon: GraduationCap, color: "text-green-500", href: "/?category=커리어" },
+  { name: "자유", icon: Coffee, color: "text-amber-500", href: "/?category=자유" },
+];
 
-  if (diffMin < 1) return "방금 전";
-  if (diffMin < 60) return `${diffMin}분 전`;
-  if (diffHour < 24) return `${diffHour}시간 전`;
-  if (diffDay < 30) return `${diffDay}일 전`;
-  return `${Math.floor(diffDay / 30)}개월 전`;
-}
+// ─── 상단 정렬 탭 정의 ───
+const SORT_TABS = [
+  { key: "popular", label: "인기", icon: Flame, iconColor: "text-red-500" },
+  { key: "latest", label: "최신", icon: Clock, iconColor: "text-blue-500" },
+  { key: "rising", label: "급상승", icon: TrendingUp, iconColor: "text-green-500" },
+];
 
-// ─── 메인 페이지 컴포넌트 (서버 컴포넌트 - async 함수) ───
-export default async function Home() {
-  // Supabase에서 게시글 + 작성자 정보를 최신순으로 조회
-  const supabase = createServerSupabaseClient();
+// ═══════════════════════════════════════════════════════
+// 메인 페이지 컴포넌트
+// ═══════════════════════════════════════════════════════
+export default function Home() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
-  const { data: posts, error } = await supabase
-    .from("posts")
-    .select(
-      `
-      id,
-      title,
-      content,
-      category,
-      upvotes,
-      comment_count,
-      created_at,
-      author_id,
-      profiles (
-        nickname,
-        avatar_url
-      )
-    `
-    )
-    .order("created_at", { ascending: false }) // 최신글이 위로
-    .limit(20); // 최대 20개
+  // URL에서 현재 필터/정렬 값 읽기
+  const currentCategory = searchParams.get("category") || ""; // 빈 문자열 = 전체
+  const currentSort = searchParams.get("sort") || "popular"; // 기본값: 인기순
 
-  // 트렌딩: 추천수 상위 5개 (별도 쿼리)
-  const { data: trending } = await supabase
-    .from("posts")
-    .select("id, title, comment_count")
-    .order("upvotes", { ascending: false })
-    .limit(5);
+  const [posts, setPosts] = useState<PostWithAuthor[]>([]);
+  const [trending, setTrending] = useState<TrendingPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+
+  // ─── 게시글 목록 불러오기 (카테고리 + 정렬 적용) ───
+  const fetchPosts = useCallback(
+    async (category: string, sort: string) => {
+      // 기본 쿼리: posts + profiles JOIN
+      let query = supabase
+        .from("posts")
+        .select(
+          `id, title, content, category, upvotes, comment_count, created_at, author_id,
+           profiles ( nickname, avatar_url )`
+        );
+
+      // 카테고리 필터링: 값이 있으면 해당 카테고리만
+      if (category) {
+        query = query.eq("category", category);
+      }
+
+      // 정렬 기준 적용
+      if (sort === "popular") {
+        // 인기순: 추천 수 내림차순 → 같으면 최신순
+        query = query
+          .order("upvotes", { ascending: false })
+          .order("created_at", { ascending: false });
+      } else if (sort === "rising") {
+        // 급상승: 최근 24시간 이내 글 중 추천 수 높은 순
+        const oneDayAgo = new Date(
+          Date.now() - 24 * 60 * 60 * 1000
+        ).toISOString();
+        query = query
+          .gte("created_at", oneDayAgo)
+          .order("upvotes", { ascending: false });
+      } else {
+        // 최신순 (기본)
+        query = query.order("created_at", { ascending: false });
+      }
+
+      const { data } = await query.limit(20);
+      if (data) setPosts(data as PostWithAuthor[]);
+    },
+    []
+  );
+
+  // ─── 트렌딩 불러오기 ───
+  const fetchTrending = useCallback(async () => {
+    const { data } = await supabase
+      .from("posts")
+      .select("id, title, comment_count")
+      .order("upvotes", { ascending: false })
+      .limit(5);
+    if (data) setTrending(data as TrendingPost[]);
+  }, []);
+
+  // ─── 내가 추천한 글 목록 ───
+  const fetchMyLikes = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from("post_likes")
+      .select("post_id")
+      .eq("user_id", userId);
+    if (data) {
+      setLikedPostIds(new Set(data.map((row) => row.post_id)));
+    }
+  }, []);
+
+  // ─── 초기 + URL 변경 시 데이터 로드 ───
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+
+      // 유저 세션 확인
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        await fetchMyLikes(session.user.id);
+      }
+
+      // 게시글 + 트렌딩 동시 로드
+      await Promise.all([
+        fetchPosts(currentCategory, currentSort),
+        fetchTrending(),
+      ]);
+      setLoading(false);
+    };
+
+    init();
+  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes]);
+
+  // ─── URL 파라미터 조합 헬퍼 ───
+  // 카테고리를 바꿀 때: 정렬은 유지
+  function buildCategoryUrl(category: string): string {
+    const params = new URLSearchParams();
+    if (category) params.set("category", category);
+    if (currentSort && currentSort !== "popular")
+      params.set("sort", currentSort);
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  }
+
+  // 정렬을 바꿀 때: 카테고리는 유지
+  function buildSortUrl(sort: string): string {
+    const params = new URLSearchParams();
+    if (currentCategory) params.set("category", currentCategory);
+    if (sort !== "popular") params.set("sort", sort);
+    const qs = params.toString();
+    return qs ? `/?${qs}` : "/";
+  }
+
+  // ─── 추천 토글 핸들러 ───
+  const handleToggleLike = async (e: React.MouseEvent, postId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const isLiked = likedPostIds.has(postId);
+
+    if (isLiked) {
+      await supabase
+        .from("post_likes")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id);
+
+      await supabase.rpc("decrement_upvotes", { row_id: postId });
+
+      setLikedPostIds((prev) => {
+        const next = new Set(prev);
+        next.delete(postId);
+        return next;
+      });
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, upvotes: Math.max(0, p.upvotes - 1) } : p
+        )
+      );
+    } else {
+      await supabase
+        .from("post_likes")
+        .insert({ post_id: postId, user_id: user.id });
+
+      await supabase.rpc("increment_upvotes", { row_id: postId });
+
+      setLikedPostIds((prev) => new Set(prev).add(postId));
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId ? { ...p, upvotes: p.upvotes + 1 } : p
+        )
+      );
+    }
+  };
+
+  // ─── 로딩 화면 ───
+  if (loading) {
+    return (
+      <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4">
-      {/* 3단 레이아웃 그리드: 좌측(220px) + 중앙(유동) + 우측(300px) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr_300px]">
         {/* ═══════════════════════════════════════════ */}
-        {/* 좌측 사이드바: 카테고리 메뉴 (데스크탑에서만 표시) */}
+        {/* 좌측 사이드바: 카테고리 필터 메뉴            */}
         {/* ═══════════════════════════════════════════ */}
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-1">
@@ -131,16 +296,34 @@ export default async function Home() {
               카테고리
             </h2>
 
-            {CATEGORIES.map((cat) => (
-              <a
-                key={cat.name}
-                href="#"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground hover:bg-gray-100"
-              >
-                <cat.icon className={`h-5 w-5 ${cat.color}`} />
-                <span>{cat.name}</span>
-              </a>
-            ))}
+            {SIDEBAR_CATEGORIES.map((cat) => {
+              // 현재 선택된 카테고리인지 판별
+              const isActive =
+                (cat.name === "전체" && !currentCategory) ||
+                cat.name === currentCategory;
+
+              return (
+                <Link
+                  key={cat.name}
+                  href={cat.name === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat.name)}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary font-semibold"
+                      : "text-foreground hover:bg-gray-100"
+                  }`}
+                >
+                  <cat.icon
+                    className={`h-5 w-5 ${isActive ? "text-primary" : cat.color}`}
+                  />
+                  <span>{cat.name}</span>
+
+                  {/* 활성 상태 표시 바 */}
+                  {isActive && (
+                    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                  )}
+                </Link>
+              );
+            })}
 
             <div className="my-3 border-t border-border-color" />
 
@@ -155,83 +338,166 @@ export default async function Home() {
         </aside>
 
         {/* ═══════════════════════════════════════════ */}
-        {/* 중앙 피드: 게시글 카드 목록 */}
+        {/* 중앙 피드                                    */}
         {/* ═══════════════════════════════════════════ */}
         <section className="space-y-3">
-          {/* 피드 상단: 정렬 탭 */}
+          {/* 피드 최상단: Featured 슬라이딩 배너 */}
+          <FeaturedSlider />
+
+          {/* 피드 상단: 정렬 탭 + 현재 카테고리 표시 */}
           <div className="flex items-center gap-2 rounded-lg border border-border-color bg-card-bg p-2">
-            <button className="flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-foreground">
-              <Flame className="h-4 w-4 text-red-500" />
-              인기
-            </button>
-            <button className="flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium text-muted hover:bg-gray-100">
-              <Clock className="h-4 w-4" />
-              최신
-            </button>
-            <button className="flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium text-muted hover:bg-gray-100">
-              <TrendingUp className="h-4 w-4" />
-              급상승
-            </button>
+            {SORT_TABS.map((tab) => {
+              const isActive = currentSort === tab.key;
+
+              return (
+                <Link
+                  key={tab.key}
+                  href={buildSortUrl(tab.key)}
+                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-gray-100 text-foreground"
+                      : "text-muted hover:bg-gray-50 hover:text-foreground"
+                  }`}
+                >
+                  <tab.icon
+                    className={`h-4 w-4 ${isActive ? tab.iconColor : ""}`}
+                  />
+                  {tab.label}
+                </Link>
+              );
+            })}
+
+            {/* 현재 선택된 카테고리 뱃지 (카테고리 필터 활성 시) */}
+            {currentCategory && (
+              <div className="ml-auto flex items-center gap-1.5">
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryColor(currentCategory)}`}
+                >
+                  {currentCategory}
+                </span>
+                <Link
+                  href={buildCategoryUrl("")}
+                  className="rounded-full p-0.5 text-muted hover:bg-gray-100 hover:text-foreground"
+                  aria-label="필터 해제"
+                >
+                  ✕
+                </Link>
+              </div>
+            )}
           </div>
 
-          {/* DB 조회 에러 시 */}
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              데이터를 불러오는 데 실패했습니다: {error.message}
-            </div>
-          )}
+          {/* 모바일 전용: 카테고리 가로 스크롤 */}
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
+            {SIDEBAR_CATEGORIES.map((cat) => {
+              const isActive =
+                (cat.name === "전체" && !currentCategory) ||
+                cat.name === currentCategory;
+
+              return (
+                <Link
+                  key={cat.name}
+                  href={cat.name === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat.name)}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    isActive
+                      ? "bg-primary text-white"
+                      : "border border-border-color text-muted hover:border-primary hover:text-primary"
+                  }`}
+                >
+                  {cat.name}
+                </Link>
+              );
+            })}
+          </div>
 
           {/* 게시글이 없을 때 */}
-          {!error && (!posts || posts.length === 0) && (
+          {posts.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-lg border border-border-color bg-card-bg py-16 text-center">
               <Inbox className="mb-4 h-12 w-12 text-muted" />
               <h3 className="mb-1 text-lg font-semibold text-foreground">
-                아직 게시글이 없습니다
+                {currentCategory
+                  ? `'${currentCategory}' 카테고리에 게시글이 없습니다`
+                  : "아직 게시글이 없습니다"}
               </h3>
               <p className="mb-4 text-sm text-muted">
-                첫 번째 글을 작성해 커뮤니티를 시작해보세요!
+                {currentCategory
+                  ? "다른 카테고리를 확인하거나 첫 글을 작성해보세요!"
+                  : "첫 번째 글을 작성해 커뮤니티를 시작해보세요!"}
               </p>
-              <a
-                href="/submit"
-                className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-              >
-                글쓰기
-              </a>
+              <div className="flex gap-2">
+                {currentCategory && (
+                  <Link
+                    href="/"
+                    className="rounded-full border border-border-color px-5 py-2 text-sm font-medium text-muted hover:bg-gray-100"
+                  >
+                    전체 보기
+                  </Link>
+                )}
+                <a
+                  href="/submit"
+                  className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                >
+                  글쓰기
+                </a>
+              </div>
             </div>
           )}
 
-          {/* 게시글 카드 목록 (Supabase에서 가져온 실제 데이터) */}
-          {posts &&
-            (posts as PostWithAuthor[]).map((post) => (
-              <article
+          {/* 게시글 카드 목록 */}
+          {posts.map((post) => {
+            const isLiked = likedPostIds.has(post.id);
+
+            return (
+              <Link
                 key={post.id}
-                className="post-card flex rounded-lg border border-border-color bg-card-bg overflow-hidden cursor-pointer"
+                href={`/post/${post.id}`}
+                className="post-card flex rounded-lg border border-border-color bg-card-bg overflow-hidden cursor-pointer block"
               >
-                {/* 좌측: 추천/비추천 투표 영역 */}
+                {/* 좌측: 추천 투표 */}
                 <div className="flex w-10 shrink-0 flex-col items-center gap-1 bg-gray-50 py-2">
                   <button
-                    className="text-muted hover:text-upvote"
+                    onClick={(e) => handleToggleLike(e, post.id)}
+                    className={`transition-colors ${
+                      isLiked
+                        ? "text-upvote"
+                        : "text-muted hover:text-upvote"
+                    }`}
                     aria-label="추천"
                   >
-                    <ArrowBigUp className="h-5 w-5" />
+                    <ArrowBigUp
+                      className="h-5 w-5"
+                      fill={isLiked ? "currentColor" : "none"}
+                    />
                   </button>
-                  <span className="text-xs font-bold text-foreground">
+                  <span
+                    className={`text-xs font-bold ${
+                      isLiked ? "text-upvote" : "text-foreground"
+                    }`}
+                  >
                     {post.upvotes}
                   </span>
                   <button
                     className="text-muted hover:text-blue-500"
                     aria-label="비추천"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
                   >
                     <ArrowBigDown className="h-5 w-5" />
                   </button>
                 </div>
 
-                {/* 우측: 게시글 내용 영역 */}
+                {/* 우측: 내용 */}
                 <div className="flex-1 p-3">
-                  {/* 상단 메타 정보: 카테고리 + 작성자 + 시간 */}
                   <div className="mb-1 flex items-center gap-2 text-xs">
+                    {/* 카테고리 뱃지 (클릭 시 해당 카테고리로 필터) */}
                     <span
-                      className={`rounded-full px-2 py-0.5 font-medium ${getCategoryColor(post.category)}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        router.push(buildCategoryUrl(post.category));
+                      }}
+                      className={`cursor-pointer rounded-full px-2 py-0.5 font-medium hover:opacity-80 ${getCategoryColor(post.category)}`}
                     >
                       {post.category}
                     </span>
@@ -241,42 +507,52 @@ export default async function Home() {
                     </span>
                   </div>
 
-                  {/* 게시글 제목 */}
                   <h3 className="mb-1 text-base font-semibold leading-snug text-foreground">
                     {post.title}
                   </h3>
 
-                  {/* 게시글 본문 미리보기 (2줄까지) */}
                   <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-muted">
                     {post.content}
                   </p>
 
-                  {/* 하단: 댓글, 공유, 저장 버튼 */}
                   <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100">
+                    <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted">
                       <MessageCircle className="h-4 w-4" />
                       {post.comment_count}개 댓글
-                    </button>
-                    <button className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100">
+                    </span>
+                    <button
+                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
                       <Share2 className="h-4 w-4" />
                       공유
                     </button>
-                    <button className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100">
+                    <button
+                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
                       <Bookmark className="h-4 w-4" />
                       저장
                     </button>
                   </div>
                 </div>
-              </article>
-            ))}
+              </Link>
+            );
+          })}
         </section>
 
         {/* ═══════════════════════════════════════════ */}
-        {/* 우측 사이드바: 트렌딩 + 커뮤니티 정보 (데스크탑에서만 표시) */}
+        {/* 우측 사이드바                                */}
         {/* ═══════════════════════════════════════════ */}
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-4">
-            {/* 트렌딩 게시글 위젯 */}
+            {/* 트렌딩 */}
             <div className="rounded-lg border border-border-color bg-card-bg overflow-hidden">
               <div className="bg-primary px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-white">
@@ -284,13 +560,12 @@ export default async function Home() {
                   오늘의 트렌딩
                 </h2>
               </div>
-
               <div className="divide-y divide-border-color">
-                {trending && trending.length > 0 ? (
+                {trending.length > 0 ? (
                   trending.map((item, index) => (
-                    <a
+                    <Link
                       key={item.id}
-                      href="#"
+                      href={`/post/${item.id}`}
                       className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50"
                     >
                       <span className="text-lg font-bold text-primary">
@@ -305,7 +580,7 @@ export default async function Home() {
                         </p>
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                    </a>
+                    </Link>
                   ))
                 ) : (
                   <p className="px-4 py-6 text-center text-sm text-muted">
@@ -315,7 +590,7 @@ export default async function Home() {
               </div>
             </div>
 
-            {/* 커뮤니티 소개 위젯 */}
+            {/* 커뮤니티 소개 */}
             <div className="rounded-lg border border-border-color bg-card-bg p-4">
               <h3 className="mb-2 text-sm font-bold text-foreground">
                 BizTask 커뮤니티
@@ -342,18 +617,12 @@ export default async function Home() {
               </a>
             </div>
 
-            {/* 풋터 링크 */}
+            {/* 풋터 */}
             <div className="px-2 text-xs text-muted">
               <div className="flex flex-wrap gap-x-2 gap-y-1">
-                <a href="#" className="hover:underline">
-                  이용약관
-                </a>
-                <a href="#" className="hover:underline">
-                  개인정보처리방침
-                </a>
-                <a href="#" className="hover:underline">
-                  문의하기
-                </a>
+                <a href="#" className="hover:underline">이용약관</a>
+                <a href="#" className="hover:underline">개인정보처리방침</a>
+                <a href="#" className="hover:underline">문의하기</a>
               </div>
               <p className="mt-2">2026 BizTask. All rights reserved.</p>
             </div>
