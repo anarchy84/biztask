@@ -3,6 +3,7 @@
 // page.tsx(서버 컴포넌트)에서 import하여 사용
 // 브랜드: 형광 그린 #73e346 계열
 // M11: 게시글 작성자 + 댓글 작성자 프로필 이미지 표시
+// M12: 작성자 본인만 수정/삭제 버튼 표시 + 삭제 로직
 
 "use client";
 
@@ -21,6 +22,8 @@ import {
   Loader2,
   Clock,
   Trash2,
+  Pencil,
+  MoreHorizontal,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -113,6 +116,12 @@ export default function PostDetailClient() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState("");
 
+  // 게시글 삭제 관련 상태
+  const [deleting, setDeleting] = useState(false);
+
+  // 더보기 메뉴 (수정/삭제) 토글 상태
+  const [showMenu, setShowMenu] = useState(false);
+
   // ─── 게시글 불러오기 ───
   const fetchPost = useCallback(async () => {
     const { data } = await supabase
@@ -186,6 +195,15 @@ export default function PostDetailClient() {
     init();
   }, [fetchPost, fetchComments, checkMyLike]);
 
+  // ─── 더보기 메뉴 외부 클릭 시 닫기 ───
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showMenu) setShowMenu(false);
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [showMenu]);
+
   // ─── 추천 토글 ───
   const handleToggleLike = async () => {
     if (!user) {
@@ -214,6 +232,48 @@ export default function PostDetailClient() {
       setPost((prev) =>
         prev ? { ...prev, upvotes: prev.upvotes + 1 } : prev
       );
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // 게시글 삭제 핸들러 (작성자 본인만 가능)
+  // ═══════════════════════════════════════════════════════
+  const handleDeletePost = async () => {
+    if (!user || !post) return;
+    // 이중 권한 체크: 현재 유저 === 게시글 작성자
+    if (user.id !== post.author_id) return;
+
+    const confirmed = window.confirm("정말 이 글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.");
+    if (!confirmed) return;
+
+    setDeleting(true);
+
+    try {
+      // 게시글에 달린 댓글 먼저 삭제 (FK 제약조건 방지)
+      await supabase.from("comments").delete().eq("post_id", postId);
+
+      // 게시글에 달린 좋아요 삭제
+      await supabase.from("post_likes").delete().eq("post_id", postId);
+
+      // 게시글 삭제
+      const { error: deleteError } = await supabase
+        .from("posts")
+        .delete()
+        .eq("id", postId)
+        .eq("author_id", user.id); // RLS 추가 안전장치
+
+      if (deleteError) {
+        alert("삭제에 실패했습니다: " + deleteError.message);
+        setDeleting(false);
+        return;
+      }
+
+      // 삭제 성공 → 홈으로 이동
+      router.push("/");
+      router.refresh();
+    } catch {
+      alert("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+      setDeleting(false);
     }
   };
 
@@ -325,6 +385,9 @@ export default function PostDetailClient() {
   const postAuthorNickname = getAuthorNickname(post.profiles);
   const postAuthorAvatarUrl = getAuthorAvatarUrl(post.profiles);
 
+  // 현재 유저가 이 글의 작성자인지 확인 (수정/삭제 권한)
+  const isMyPost = user !== null && user.id === post.author_id;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
       {/* 상단: 뒤로가기 */}
@@ -343,7 +406,7 @@ export default function PostDetailClient() {
       {/* ═══════════════════════════════════════════ */}
       <article className="mb-6 rounded-xl border border-border-color bg-card-bg overflow-hidden">
         <div className="p-5">
-          {/* 메타 정보 (아바타 + 카테고리 + 작성자 + 시간) */}
+          {/* 메타 정보 (아바타 + 카테고리 + 작성자 + 시간 + 수정/삭제) */}
           <div className="mb-3 flex items-center gap-2 text-xs">
             {/* 게시글 작성자 아바타 */}
             {postAuthorAvatarUrl ? (
@@ -370,6 +433,52 @@ export default function PostDetailClient() {
               <Clock className="h-3 w-3" />
               {timeAgo(post.created_at)}
             </span>
+
+            {/* ─── 수정/삭제 더보기 메뉴 (작성자 본인만 표시) ─── */}
+            {isMyPost && (
+              <div className="relative ml-auto">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu((prev) => !prev);
+                  }}
+                  className="rounded-full p-1.5 text-muted transition-colors hover:bg-hover-bg hover:text-primary"
+                  aria-label="더보기"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+
+                {/* 드롭다운 메뉴 */}
+                {showMenu && (
+                  <div className="absolute right-0 top-8 z-10 w-32 rounded-lg border border-border-color bg-card-bg py-1 shadow-lg">
+                    {/* 수정 버튼 */}
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        router.push(`/edit/${postId}`);
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-hover-bg hover:text-primary transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      수정
+                    </button>
+
+                    {/* 삭제 버튼 */}
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        handleDeletePost();
+                      }}
+                      disabled={deleting}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {deleting ? "삭제 중..." : "삭제"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 제목 */}
