@@ -2,7 +2,7 @@
 // 용도: BizTask 다크 헤더 - 형광 그린 글로우 검색창 + 프로필 아바타 이미지 표시
 // 레이아웃: Tailwind 유틸리티만 사용 (max-w-7xl mx-auto px-4 md:px-8)
 // 브랜드: 형광 그린 #73e346 계열
-// user_metadata.avatar_url이 있으면 이미지를, 없으면 이니셜을 표시
+// 검색: 엔터 시 /search?q=키워드 로 라우팅
 
 "use client";
 
@@ -18,6 +18,9 @@ export default function Header() {
   const [loading, setLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
+
+  // 검색어 상태
+  const [searchQuery, setSearchQuery] = useState("");
 
   const router = useRouter();
 
@@ -87,6 +90,14 @@ export default function Header() {
     router.refresh();
   };
 
+  // ─── 검색 폼 제출 핸들러 ───
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault(); // 페이지 새로고침 방지
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return; // 빈 검색어 무시
+    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+  };
+
   // ─── 유저 이메일에서 첫 글자 추출 ───
   const getUserInitial = () => {
     if (nickname) return nickname.charAt(0).toUpperCase();
@@ -113,16 +124,18 @@ export default function Header() {
           </a>
         </div>
 
-        {/* 중앙: 빛나는 검색창 (형광 그린 글로우) */}
+        {/* 중앙: 빛나는 검색창 (형광 그린 글로우) — form으로 감싸서 엔터 시 라우팅 */}
         <div className="mx-4 flex-1 max-w-xl">
-          <div className="relative">
+          <form onSubmit={handleSearch} className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <input
               type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="BizTask 검색..."
               className="search-glow w-full rounded-full border border-border-color bg-input-bg py-2 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:outline-none"
             />
-          </div>
+          </form>
         </div>
 
         {/* 우측: 버튼 그룹 */}
