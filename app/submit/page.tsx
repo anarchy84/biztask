@@ -134,7 +134,7 @@ export default function SubmitPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
+    <div className="mx-auto max-w-2xl px-4 py-6 md:px-8">
       {/* 상단: 뒤로가기 + 페이지 제목 */}
       <div className="mb-6 flex items-center gap-3">
         <button
@@ -174,7 +174,7 @@ export default function SubmitPage() {
                   onClick={() => setCategory(cat)}
                   className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
                     category === cat
-                      ? "bg-primary text-white"
+                      ? "bg-primary text-black"
                       : "border border-border-color text-muted hover:border-primary hover:text-primary"
                   }`}
                 >
@@ -238,7 +238,7 @@ export default function SubmitPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+              className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-black hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? (
                 <>

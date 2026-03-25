@@ -49,11 +49,11 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center px-4 py-12">
+    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center px-4 py-12 md:px-8">
       <div className="w-full max-w-md">
         {/* 상단: 로고 + 안내 */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white text-2xl font-bold">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-black text-2xl font-bold">
             B
           </div>
           <h1 className="text-2xl font-bold text-foreground">
@@ -93,7 +93,7 @@ export default function ResetPasswordPage() {
                 </button>
                 <Link
                   href="/login"
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-black hover:bg-primary-hover"
                 >
                   로그인으로 돌아가기
                 </Link>
@@ -134,7 +134,7 @@ export default function ResetPasswordPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-black hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? (
                     <>

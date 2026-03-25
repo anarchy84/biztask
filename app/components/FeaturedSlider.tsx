@@ -1,18 +1,19 @@
 // 파일 위치: app/components/FeaturedSlider.tsx
-// 용도: 메인 피드 상단 가로 슬라이딩 배너 (레딧 다크 테마)
-// 기능: 모바일 스와이프 + PC 마우스 휠 + 스크롤 스냅
+// 용도: 메인 피드 상단 가로 슬라이딩 배너 (BizTask 다크 테마)
+// 규격: 카드 너비 min 240px / max 380px / gap-3 통일, aspect-[16/10]
+// 브랜드: 형광 그린 #73e346 계열
 
 "use client";
 
 import { useRef, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Flame } from "lucide-react";
 
-// ─── 슬라이더 카드 데이터 (하드코딩 샘플) ───
+// ─── 슬라이더 카드 데이터 ───
 const FEATURED_ITEMS = [
   {
     id: "f1",
     category: "사업",
-    categoryColor: "bg-orange-500",
+    categoryColor: "bg-primary",
     title: "강남 스터디룸 대관 꿀팁 A to Z",
     image:
       "https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&h=340&fit=crop",
@@ -20,7 +21,7 @@ const FEATURED_ITEMS = [
   {
     id: "f2",
     category: "마케팅",
-    categoryColor: "bg-purple-500",
+    categoryColor: "bg-purple-600",
     title: "비전공자 마케터 연봉 5천 찍는 법",
     image:
       "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=340&fit=crop",
@@ -28,7 +29,7 @@ const FEATURED_ITEMS = [
   {
     id: "f3",
     category: "커리어",
-    categoryColor: "bg-green-500",
+    categoryColor: "bg-cyan-500",
     title: "이직할 때 꼭 체크해야 할 독소조항 3가지",
     image:
       "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=600&h=340&fit=crop",
@@ -49,7 +50,7 @@ export default function FeaturedSlider() {
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // ─── 스크롤 상태 감지 (좌/우 화살표 표시 여부 결정) ───
+  // ─── 스크롤 상태 감지 ───
   const checkScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -57,8 +58,7 @@ export default function FeaturedSlider() {
     setCanScrollLeft(el.scrollLeft > 10);
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 10);
 
-    // 현재 활성 인덱스 계산 (스냅 포인트 기준)
-    const cardWidth = el.clientWidth * 0.75; // 카드 너비 약 75%
+    const cardWidth = el.clientWidth * 0.7;
     const index = Math.round(el.scrollLeft / cardWidth);
     setActiveIndex(Math.min(index, FEATURED_ITEMS.length - 1));
   };
@@ -67,16 +67,16 @@ export default function FeaturedSlider() {
     const el = scrollRef.current;
     if (!el) return;
     el.addEventListener("scroll", checkScroll, { passive: true });
-    checkScroll(); // 초기 체크
+    checkScroll();
     return () => el.removeEventListener("scroll", checkScroll);
   }, []);
 
-  // ─── 화살표 클릭으로 스크롤 ───
+  // ─── 화살표 클릭 스크롤 ───
   const scroll = (direction: "left" | "right") => {
     const el = scrollRef.current;
     if (!el) return;
 
-    const scrollAmount = el.clientWidth * 0.75;
+    const scrollAmount = el.clientWidth * 0.7;
     el.scrollBy({
       left: direction === "left" ? -scrollAmount : scrollAmount,
       behavior: "smooth",
@@ -84,7 +84,7 @@ export default function FeaturedSlider() {
   };
 
   return (
-    <div className="mb-3">
+    <div className="mb-4">
       {/* 섹션 헤더 */}
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
@@ -109,11 +109,11 @@ export default function FeaturedSlider() {
 
       {/* 슬라이더 컨테이너 */}
       <div className="group relative">
-        {/* 좌측 화살표 (PC에서 호버 시 표시) */}
+        {/* 좌측 화살표 */}
         {canScrollLeft && (
           <button
             onClick={() => scroll("left")}
-            className="absolute -left-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm transition-opacity hover:bg-hover-bg lg:group-hover:block"
+            className="absolute -left-3 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm hover:bg-hover-bg lg:group-hover:block"
             aria-label="이전"
           >
             <ChevronLeft className="h-5 w-5 text-foreground" />
@@ -124,7 +124,7 @@ export default function FeaturedSlider() {
         {canScrollRight && (
           <button
             onClick={() => scroll("right")}
-            className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm transition-opacity hover:bg-hover-bg lg:group-hover:block"
+            className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm hover:bg-hover-bg lg:group-hover:block"
             aria-label="다음"
           >
             <ChevronRight className="h-5 w-5 text-foreground" />
@@ -134,7 +134,7 @@ export default function FeaturedSlider() {
         {/* 가로 스크롤 영역 */}
         <div
           ref={scrollRef}
-          className="flex gap-3 overflow-x-auto pb-2"
+          className="flex gap-3 overflow-x-auto"
           style={{
             scrollSnapType: "x mandatory",
             WebkitOverflowScrolling: "touch",
@@ -149,14 +149,13 @@ export default function FeaturedSlider() {
               className="relative shrink-0 overflow-hidden rounded-xl border border-border-color"
               style={{
                 scrollSnapAlign: "start",
-                width: "75%",
-                minWidth: "260px",
-                maxWidth: "400px",
+                width: "70%",
+                minWidth: "240px",
+                maxWidth: "380px",
               }}
             >
-              {/* 카드: 16:9 비율 이미지 + 오버레이 */}
-              <div className="relative aspect-video w-full">
-                {/* 배경 이미지 */}
+              {/* 카드 이미지 + 오버레이 */}
+              <div className="relative" style={{ aspectRatio: "16 / 10" }}>
                 <img
                   src={item.image}
                   alt={item.title}
@@ -164,20 +163,17 @@ export default function FeaturedSlider() {
                   loading="lazy"
                 />
 
-                {/* 하단 그라데이션 오버레이 */}
+                {/* 하단 그라데이션 */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-                {/* 텍스트 콘텐츠 (오버레이 위) */}
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  {/* 카테고리 뱃지 */}
+                {/* 텍스트 콘텐츠 */}
+                <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
                   <span
-                    className={`mb-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold text-white ${item.categoryColor}`}
+                    className={`mb-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${item.categoryColor}`}
                   >
                     {item.category}
                   </span>
-
-                  {/* 제목 */}
-                  <h3 className="text-base font-bold leading-snug text-white drop-shadow-md sm:text-lg">
+                  <h3 className="text-sm font-bold leading-snug text-white drop-shadow-md sm:text-base">
                     {item.title}
                   </h3>
                 </div>

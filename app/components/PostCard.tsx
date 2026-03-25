@@ -1,6 +1,7 @@
 // 파일 위치: app/components/PostCard.tsx
-// 용도: 레딧 스타일 게시글 카드 (하단 보팅 바 + 인터랙션 필 버튼)
-// 기능: 업보트/다운보트 토글, 댓글 수, 공유, 저장 버튼
+// 용도: BizTask 스타일 게시글 카드 (하단 보팅 바 + 인터랙션 필 버튼)
+// 규격: 카드 내부 패딩 px-4 py-3 통일, 아이콘 h-4 w-4 / h-5 w-5 규격화
+// 브랜드: 형광 그린 #73e346 계열
 
 "use client";
 
@@ -30,9 +31,9 @@ type PostCardProps = {
 // ─── 카테고리 뱃지 색상 (다크 테마용) ───
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
-    사업: "bg-orange-500/20 text-orange-400",
+    사업: "bg-primary/20 text-primary-light",
     마케팅: "bg-purple-500/20 text-purple-400",
-    커리어: "bg-green-500/20 text-green-400",
+    커리어: "bg-cyan-500/20 text-cyan-400",
     자유: "bg-amber-500/20 text-amber-400",
   };
   return colorMap[category] || "bg-gray-500/20 text-gray-400";
@@ -74,14 +75,14 @@ export default function PostCard({
   onCategoryClick,
 }: PostCardProps) {
   return (
-    <div className="post-card rounded-xl border border-border-color bg-card-bg overflow-hidden">
+    <div className="post-card rounded-xl border border-border-color bg-card-bg">
       {/* 상단: 메타 정보 (카테고리 + 작성자 + 시간) */}
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-xs">
-          {/* 카테고리 뱃지 (클릭 시 필터링) */}
+          {/* 카테고리 뱃지 */}
           <span
             onClick={(e) => onCategoryClick(e, category)}
-            className={`cursor-pointer rounded-full px-2.5 py-0.5 font-semibold hover:opacity-80 ${getCategoryColor(category)}`}
+            className={`cursor-pointer rounded-full px-2 py-0.5 text-[11px] font-semibold hover:opacity-80 ${getCategoryColor(category)}`}
           >
             {category}
           </span>
@@ -92,8 +93,8 @@ export default function PostCard({
       </div>
 
       {/* 중앙: 제목 + 내용 미리보기 */}
-      <div className="px-4 pb-2">
-        <h3 className="mb-1 text-base font-semibold leading-snug text-foreground">
+      <div className="px-4 pt-1.5 pb-2">
+        <h3 className="mb-1 text-[15px] font-semibold leading-snug text-foreground">
           {title}
         </h3>
         <p className="line-clamp-2 text-sm leading-relaxed text-muted">
@@ -101,16 +102,14 @@ export default function PostCard({
         </p>
       </div>
 
-      {/* ═══════════════════════════════════════════════ */}
-      {/* 하단: 레딧 스타일 인터랙션 바 (필 버튼)         */}
-      {/* ═══════════════════════════════════════════════ */}
-      <div className="flex items-center gap-2 px-4 pb-3 pt-1">
+      {/* 하단: 레딧 스타일 인터랙션 바 */}
+      <div className="flex items-center gap-2 px-3 pb-2.5">
         {/* 추천/비추천 그룹 (하나의 필에 묶음) */}
         <div className="flex items-center rounded-full bg-hover-bg">
           {/* 업보트 버튼 */}
           <button
             onClick={(e) => onToggleLike(e, id)}
-            className={`flex items-center rounded-l-full py-1.5 pl-3 pr-1.5 transition-colors ${
+            className={`flex items-center rounded-l-full py-1.5 pl-2.5 pr-1 transition-colors ${
               isLiked
                 ? "text-upvote hover:bg-upvote/20"
                 : "text-muted hover:bg-hover-bg hover:text-upvote"
@@ -125,21 +124,20 @@ export default function PostCard({
 
           {/* 추천 수 */}
           <span
-            className={`px-1 text-xs font-bold ${
+            className={`min-w-[28px] text-center text-xs font-bold ${
               isLiked ? "text-upvote" : "text-foreground"
             }`}
           >
             {formatCount(upvotes)}
           </span>
 
-          {/* 다운보트 버튼 (UI 뼈대만, 로직은 주석) */}
+          {/* 다운보트 버튼 */}
           <button
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              // TODO: 다운보트 로직 구현 시 여기에 추가
             }}
-            className="flex items-center rounded-r-full py-1.5 pl-1.5 pr-3 text-muted transition-colors hover:text-downvote"
+            className="flex items-center rounded-r-full py-1.5 pl-1 pr-2.5 text-muted transition-colors hover:text-downvote"
             aria-label="비추천"
           >
             <ArrowBigDown className="h-5 w-5" />

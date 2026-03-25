@@ -1,17 +1,22 @@
 /* 파일 위치: app/globals.css */
-/* 용도: 전역 스타일 - Tailwind v4 + 레딧 다크 테마 */
+/* 용도: 전역 스타일 - Tailwind v4 + BizTask 다크 테마 + 형광 그린 브랜드 */
+/* 주의: 레이아웃은 Tailwind 유틸리티 클래스만 사용 (커스텀 CSS 클래스 사용 금지) */
 
 @import "tailwindcss";
 
-/* ─── 레딧 다크 테마 색상 변수 ─── */
+/* ─── BizTask 브랜드 다크 테마 색상 변수 ─── */
+/* 메인 브랜드 컬러: 형광 그린 #73e346 계열 */
 :root {
   --background: #030303;
   --foreground: #d7dadc;
   --card-bg: #1a1a1b;
   --border-color: #343536;
-  --primary: #ff4500;
-  --primary-hover: #e03d00;
-  --upvote: #ff4500;
+  --primary: #73e346;
+  --primary-hover: #65cc3b;
+  --primary-light: #a3ed85;
+  --primary-dark: #53bd28;
+  --primary-glow: rgba(115, 227, 70, 0.25);
+  --upvote: #73e346;
   --downvote: #7193ff;
   --muted: #818384;
   --hover-bg: #272729;
@@ -27,6 +32,8 @@
   --color-border-color: var(--border-color);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
   --color-upvote: var(--upvote);
   --color-downvote: var(--downvote);
   --color-muted: var(--muted);
@@ -85,13 +92,13 @@ button, a {
   transition: all 0.15s ease;
 }
 
-/* ─── 검색창 글로우 효과 ─── */
+/* ─── 검색창 글로우 효과 (형광 그린) ─── */
 .search-glow:focus {
-  border-color: #ff4500;
-  box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.2), 0 0 8px rgba(255, 69, 0, 0.15);
+  border-color: #73e346;
+  box-shadow: 0 0 0 2px rgba(115, 227, 70, 0.25), 0 0 12px rgba(115, 227, 70, 0.18);
 }
 
-/* ─── 인터랙션 필 버튼 (레딧 하단 바) ─── */
+/* ─── 인터랙션 필 버튼 (하단 바) ─── */
 .interaction-pill {
   display: flex;
   align-items: center;

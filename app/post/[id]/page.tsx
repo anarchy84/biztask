@@ -59,9 +59,9 @@ function getAuthorNickname(profiles: ProfileInfo | ProfileInfo[] | null): string
 
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
-    사업: "bg-orange-500/20 text-orange-400",
+    사업: "bg-primary/20 text-primary-light",
     마케팅: "bg-purple-500/20 text-purple-400",
-    커리어: "bg-green-500/20 text-green-400",
+    커리어: "bg-cyan-500/20 text-cyan-400",
     자유: "bg-amber-500/20 text-amber-400",
   };
   return colorMap[category] || "bg-gray-500/20 text-gray-400";
@@ -290,7 +290,7 @@ export default function PostDetailPage() {
         </p>
         <Link
           href="/"
-          className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-black hover:bg-primary-hover"
         >
           홈으로 돌아가기
         </Link>
@@ -299,7 +299,7 @@ export default function PostDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
       {/* 상단: 뒤로가기 */}
       <div className="mb-4">
         <button
@@ -414,7 +414,7 @@ export default function PostDetailPage() {
             )}
             <div className="flex gap-3">
               {/* 유저 아바타 */}
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-black text-xs font-bold">
                 {user.email?.charAt(0).toUpperCase() || "?"}
               </div>
               {/* 입력 + 전송 */}
@@ -430,7 +430,7 @@ export default function PostDetailPage() {
                   <button
                     type="submit"
                     disabled={commentSubmitting || !commentText.trim()}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-black hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {commentSubmitting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -450,7 +450,7 @@ export default function PostDetailPage() {
             </p>
             <Link
               href="/login"
-              className="inline-block rounded-full bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+              className="inline-block rounded-full bg-primary px-5 py-2 text-sm font-medium text-black hover:bg-primary-hover"
             >
               로그인
             </Link>

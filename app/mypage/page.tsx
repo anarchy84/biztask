@@ -56,9 +56,9 @@ type MyPost = {
 // ─── 카테고리 색상 매핑 (다크 테마) ───
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
-    사업: "bg-orange-500/20 text-orange-400",
+    사업: "bg-primary/20 text-primary-light",
     마케팅: "bg-purple-500/20 text-purple-400",
-    커리어: "bg-green-500/20 text-green-400",
+    커리어: "bg-cyan-500/20 text-cyan-400",
     자유: "bg-amber-500/20 text-amber-400",
   };
   return colorMap[category] || "bg-gray-500/20 text-gray-400";
@@ -282,7 +282,7 @@ export default function MyPage() {
   const avatarInitial = user?.email?.charAt(0).toUpperCase() || "?";
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
       {/* ═══════════════════════════════════════════════════════ */}
       {/* 프로필 헤더 섹션 (다크 테마)                              */}
       {/* ═══════════════════════════════════════════════════════ */}
@@ -290,7 +290,7 @@ export default function MyPage() {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
           {/* 프로필 아바타 */}
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-orange-400 text-4xl font-bold text-white shadow-lg">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-light text-4xl font-bold text-white shadow-lg">
               {avatarInitial}
             </div>
           </div>
@@ -540,7 +540,7 @@ export default function MyPage() {
                     onClick={() => toggleInterest(interest)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                       editInterests.includes(interest)
-                        ? "bg-primary text-white"
+                        ? "bg-primary text-black"
                         : "border border-border-color text-muted hover:border-primary hover:text-primary"
                     }`}
                   >
@@ -561,7 +561,7 @@ export default function MyPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-60"
+                className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-black hover:bg-primary-hover disabled:opacity-60"
               >
                 {saving ? (
                   <>
@@ -642,7 +642,7 @@ export default function MyPage() {
                   </p>
                   <a
                     href="/submit"
-                    className="inline-block rounded-full bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                    className="inline-block rounded-full bg-primary px-5 py-2 text-sm font-medium text-black hover:bg-primary-hover"
                   >
                     글쓰기
                   </a>

@@ -1,6 +1,7 @@
 // 파일 위치: app/page.tsx
-// 용도: 메인 홈 화면 - 레딧 다크 테마 3단 레이아웃
-// 규격: layout-container + feed-grid 클래스로 전체 정렬 통일
+// 용도: 메인 홈 화면 - BizTask 다크 테마 3단 레이아웃
+// 레이아웃: 순수 Tailwind 유틸리티 클래스만 사용 (커스텀 CSS 클래스 사용 금지)
+// 브랜드: 형광 그린 #73e346 계열
 // Suspense 래퍼 필수 (useSearchParams)
 
 "use client";
@@ -268,9 +269,9 @@ function Home() {
   }
 
   return (
-    <div className="layout-container py-4">
-      {/* feed-grid: CSS에서 3단 비율 고정 (200px / 1fr / 280px ~ 220px / 1fr / 300px) */}
-      <div className="feed-grid">
+    <div className="mx-auto max-w-7xl px-4 py-4 md:px-8">
+      {/* 3단 그리드: Tailwind 유틸리티만 사용 */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_minmax(0,1fr)_280px] lg:gap-6 xl:grid-cols-[220px_minmax(0,1fr)_300px] xl:gap-7">
 
         {/* ═══════════════════════════════════════════ */}
         {/* 좌측 사이드바: 카테고리 필터                  */}
@@ -412,7 +413,7 @@ function Home() {
                 )}
                 <a
                   href="/submit"
-                  className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+                  className="rounded-full bg-primary px-6 py-2 text-sm font-medium text-black hover:bg-primary-hover"
                 >
                   글쓰기
                 </a>
@@ -452,7 +453,7 @@ function Home() {
             {/* 트렌딩 */}
             <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
               <div className="bg-primary px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-white">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-black">
                   <TrendingUp className="h-4 w-4" />
                   오늘의 트렌딩
                 </h2>
@@ -508,7 +509,7 @@ function Home() {
               </div>
               <a
                 href="/submit"
-                className="block w-full rounded-full bg-primary py-2 text-center text-sm font-bold text-white hover:bg-primary-hover"
+                className="block w-full rounded-full bg-primary py-2 text-center text-sm font-bold text-black hover:bg-primary-hover"
               >
                 글쓰기
               </a>
