@@ -3,6 +3,7 @@
 // 레이아웃: 순수 Tailwind 유틸리티 클래스만 사용 (커스텀 CSS 클래스 사용 금지)
 // 브랜드: 형광 그린 #73e346 계열
 // Suspense 래퍼 필수 (useSearchParams)
+// 우측 사이드바: TrendingSidebar (🔥 실시간 인기글 랭킹보드)
 
 "use client";
 
@@ -12,6 +13,7 @@ import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import FeaturedSlider from "@/app/components/FeaturedSlider";
 import PostCard from "@/app/components/PostCard";
+import TrendingSidebar from "@/app/components/TrendingSidebar";
 import {
   Flame,
   TrendingUp,
@@ -21,7 +23,6 @@ import {
   Coffee,
   Award,
   Clock,
-  ChevronRight,
   Inbox,
   Loader2,
   LayoutGrid,
@@ -46,10 +47,13 @@ type PostWithAuthor = {
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
+// 트렌딩 게시글 타입 (upvotes + category 포함)
 type TrendingPost = {
   id: string;
   title: string;
+  upvotes: number;
   comment_count: number;
+  category: string;
 };
 
 // ─── 헬퍼 함수 ───
@@ -150,11 +154,11 @@ function Home() {
     []
   );
 
-  // ─── 트렌딩 불러오기 ───
+  // ─── 🔥 실시간 인기글 TOP 5 불러오기 (upvotes 기준 내림차순) ───
   const fetchTrending = useCallback(async () => {
     const { data } = await supabase
       .from("posts")
-      .select("id, title, comment_count")
+      .select("id, title, upvotes, comment_count, category")
       .order("upvotes", { ascending: false })
       .limit(5);
     if (data) setTrending(data as TrendingPost[]);
@@ -454,47 +458,12 @@ function Home() {
         </section>
 
         {/* ═══════════════════════════════════════════ */}
-        {/* 우측 사이드바                                */}
+        {/* 우측 사이드바: 🔥 실시간 인기글 + 커뮤니티 소개 */}
         {/* ═══════════════════════════════════════════ */}
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-4">
-            {/* 트렌딩 */}
-            <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
-              <div className="bg-primary px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-black">
-                  <TrendingUp className="h-4 w-4" />
-                  오늘의 트렌딩
-                </h2>
-              </div>
-              <div className="divide-y divide-border-color">
-                {trending.length > 0 ? (
-                  trending.map((item, index) => (
-                    <Link
-                      key={item.id}
-                      href={`/post/${item.id}`}
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-hover-bg"
-                    >
-                      <span className="text-lg font-bold text-primary min-w-[20px]">
-                        {index + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {item.title}
-                        </p>
-                        <p className="text-xs text-muted">
-                          댓글 {item.comment_count}개
-                        </p>
-                      </div>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
-                    </Link>
-                  ))
-                ) : (
-                  <p className="px-4 py-6 text-center text-sm text-muted">
-                    트렌딩 게시글이 없습니다
-                  </p>
-                )}
-              </div>
-            </div>
+            {/* 🔥 실시간 인기글 랭킹보드 (TrendingSidebar 컴포넌트) */}
+            <TrendingSidebar items={trending} />
 
             {/* 커뮤니티 소개 */}
             <div className="rounded-xl border border-border-color bg-card-bg p-4">
