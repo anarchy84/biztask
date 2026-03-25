@@ -2,6 +2,7 @@
 // 용도: 게시글 상세 페이지 클라이언트 컴포넌트 (UI + 인터랙션)
 // page.tsx(서버 컴포넌트)에서 import하여 사용
 // 브랜드: 형광 그린 #73e346 계열
+// M11: 게시글 작성자 + 댓글 작성자 프로필 이미지 표시
 
 "use client";
 
@@ -58,6 +59,13 @@ function getAuthorNickname(profiles: ProfileInfo | ProfileInfo[] | null): string
   return profiles.nickname || "익명";
 }
 
+// 프로필 이미지 URL 추출 헬퍼
+function getAuthorAvatarUrl(profiles: ProfileInfo | ProfileInfo[] | null): string | null {
+  if (!profiles) return null;
+  if (Array.isArray(profiles)) return profiles[0]?.avatar_url || null;
+  return profiles.avatar_url || null;
+}
+
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
     사업: "bg-primary/20 text-primary-light",
@@ -96,6 +104,9 @@ export default function PostDetailClient() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isLiked, setIsLiked] = useState(false);
+
+  // 현재 유저의 프로필 정보 (댓글 작성 시 아바타 표시용)
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
 
   // 댓글 입력 관련 상태
   const [commentText, setCommentText] = useState("");
@@ -155,6 +166,17 @@ export default function PostDetailClient() {
       if (session?.user) {
         setUser(session.user);
         await checkMyLike(session.user.id);
+
+        // 내 프로필 아바타 가져오기 (댓글 입력 영역 표시용)
+        const { data: myProfile } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", session.user.id)
+          .single();
+
+        if (myProfile?.avatar_url) {
+          setMyAvatarUrl(myProfile.avatar_url);
+        }
       }
 
       await Promise.all([fetchPost(), fetchComments()]);
@@ -299,6 +321,10 @@ export default function PostDetailClient() {
     );
   }
 
+  // 게시글 작성자 정보
+  const postAuthorNickname = getAuthorNickname(post.profiles);
+  const postAuthorAvatarUrl = getAuthorAvatarUrl(post.profiles);
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
       {/* 상단: 뒤로가기 */}
@@ -317,15 +343,28 @@ export default function PostDetailClient() {
       {/* ═══════════════════════════════════════════ */}
       <article className="mb-6 rounded-xl border border-border-color bg-card-bg overflow-hidden">
         <div className="p-5">
-          {/* 메타 정보 */}
+          {/* 메타 정보 (아바타 + 카테고리 + 작성자 + 시간) */}
           <div className="mb-3 flex items-center gap-2 text-xs">
+            {/* 게시글 작성자 아바타 */}
+            {postAuthorAvatarUrl ? (
+              <img
+                src={postAuthorAvatarUrl}
+                alt={postAuthorNickname}
+                className="h-6 w-6 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-border-color text-xs font-bold text-foreground">
+                {postAuthorNickname.charAt(0)}
+              </div>
+            )}
+
             <span
               className={`rounded-full px-2.5 py-0.5 font-semibold ${getCategoryColor(post.category)}`}
             >
               {post.category}
             </span>
-            <span className="text-muted">
-              {getAuthorNickname(post.profiles)}
+            <span className="font-medium text-foreground">
+              {postAuthorNickname}
             </span>
             <span className="flex items-center gap-1 text-muted">
               <Clock className="h-3 w-3" />
@@ -414,10 +453,18 @@ export default function PostDetailClient() {
               </div>
             )}
             <div className="flex gap-3">
-              {/* 유저 아바타 */}
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-black text-xs font-bold">
-                {user.email?.charAt(0).toUpperCase() || "?"}
-              </div>
+              {/* 유저 아바타 (프로필 이미지 또는 이니셜) */}
+              {myAvatarUrl ? (
+                <img
+                  src={myAvatarUrl}
+                  alt="내 프로필"
+                  className="h-8 w-8 shrink-0 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-black text-xs font-bold">
+                  {user.email?.charAt(0).toUpperCase() || "?"}
+                </div>
+              )}
               {/* 입력 + 전송 */}
               <div className="flex-1">
                 <textarea
@@ -468,47 +515,60 @@ export default function PostDetailClient() {
           </div>
         ) : (
           <div className="space-y-4">
-            {comments.map((comment) => (
-              <div
-                key={comment.id}
-                className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg"
-              >
-                {/* 댓글 작성자 아바타 */}
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
-                  {getAuthorNickname(comment.profiles).charAt(0)}
-                </div>
+            {comments.map((comment) => {
+              const commentNickname = getAuthorNickname(comment.profiles);
+              const commentAvatarUrl = getAuthorAvatarUrl(comment.profiles);
 
-                {/* 댓글 내용 */}
-                <div className="flex-1 min-w-0">
-                  {/* 작성자 + 시간 */}
-                  <div className="mb-1 flex items-center gap-2 text-xs">
-                    <span className="font-medium text-foreground">
-                      {getAuthorNickname(comment.profiles)}
-                    </span>
-                    <span className="text-muted">
-                      {timeAgo(comment.created_at)}
-                    </span>
+              return (
+                <div
+                  key={comment.id}
+                  className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg"
+                >
+                  {/* 댓글 작성자 아바타 (이미지 또는 이니셜) */}
+                  {commentAvatarUrl ? (
+                    <img
+                      src={commentAvatarUrl}
+                      alt={commentNickname}
+                      className="h-7 w-7 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
+                      {commentNickname.charAt(0)}
+                    </div>
+                  )}
 
-                    {/* 본인 댓글이면 삭제 버튼 표시 */}
-                    {user && user.id === comment.user_id && (
-                      <button
-                        onClick={() => handleDeleteComment(comment.id)}
-                        className="ml-auto flex items-center gap-1 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
-                        aria-label="댓글 삭제"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        삭제
-                      </button>
-                    )}
+                  {/* 댓글 내용 */}
+                  <div className="flex-1 min-w-0">
+                    {/* 작성자 + 시간 */}
+                    <div className="mb-1 flex items-center gap-2 text-xs">
+                      <span className="font-medium text-foreground">
+                        {commentNickname}
+                      </span>
+                      <span className="text-muted">
+                        {timeAgo(comment.created_at)}
+                      </span>
+
+                      {/* 본인 댓글이면 삭제 버튼 표시 */}
+                      {user && user.id === comment.user_id && (
+                        <button
+                          onClick={() => handleDeleteComment(comment.id)}
+                          className="ml-auto flex items-center gap-1 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
+                          aria-label="댓글 삭제"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          삭제
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 댓글 본문 */}
+                    <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                      {comment.content}
+                    </p>
                   </div>
-
-                  {/* 댓글 본문 */}
-                  <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                    {comment.content}
-                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

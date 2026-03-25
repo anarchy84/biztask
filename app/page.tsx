@@ -59,6 +59,13 @@ function getAuthorNickname(profiles: PostWithAuthor["profiles"]): string {
   return profiles.nickname || "익명";
 }
 
+// 작성자 아바타 URL 추출 헬퍼
+function getAuthorAvatarUrl(profiles: PostWithAuthor["profiles"]): string | null {
+  if (!profiles) return null;
+  if (Array.isArray(profiles)) return profiles[0]?.avatar_url || null;
+  return profiles.avatar_url || null;
+}
+
 // ─── 좌측 메뉴 카테고리 ───
 const SIDEBAR_CATEGORIES = [
   { name: "전체", icon: LayoutGrid, color: "text-blue-400", href: "/" },
@@ -437,6 +444,7 @@ function Home() {
                 commentCount={post.comment_count}
                 createdAt={post.created_at}
                 authorNickname={getAuthorNickname(post.profiles)}
+                authorAvatarUrl={getAuthorAvatarUrl(post.profiles)}
                 isLiked={likedPostIds.has(post.id)}
                 onToggleLike={handleToggleLike}
                 onCategoryClick={handleCategoryClick}

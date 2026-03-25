@@ -2,6 +2,7 @@
 // 용도: BizTask 스타일 게시글 카드 (하단 보팅 바 + 인터랙션 필 버튼)
 // 규격: 카드 내부 패딩 px-4 py-3 통일, 아이콘 h-4 w-4 / h-5 w-5 규격화
 // 브랜드: 형광 그린 #73e346 계열
+// M11: 작성자 프로필 이미지(authorAvatarUrl) 표시 추가
 
 "use client";
 
@@ -23,6 +24,7 @@ type PostCardProps = {
   commentCount: number;
   createdAt: string;
   authorNickname: string;
+  authorAvatarUrl?: string | null; // 작성자 프로필 이미지 URL (선택)
   isLiked: boolean;
   onToggleLike: (e: React.MouseEvent, postId: string) => void;
   onCategoryClick: (e: React.MouseEvent, category: string) => void;
@@ -70,15 +72,29 @@ export default function PostCard({
   commentCount,
   createdAt,
   authorNickname,
+  authorAvatarUrl,
   isLiked,
   onToggleLike,
   onCategoryClick,
 }: PostCardProps) {
   return (
     <div className="post-card rounded-xl border border-border-color bg-card-bg">
-      {/* 상단: 메타 정보 (카테고리 + 작성자 + 시간) */}
+      {/* 상단: 메타 정보 (아바타 + 카테고리 + 작성자 + 시간) */}
       <div className="px-4 pt-3">
         <div className="flex items-center gap-2 text-xs">
+          {/* 작성자 아바타 (이미지 또는 이니셜) */}
+          {authorAvatarUrl ? (
+            <img
+              src={authorAvatarUrl}
+              alt={authorNickname}
+              className="h-5 w-5 rounded-full object-cover"
+            />
+          ) : (
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-border-color text-[10px] font-bold text-foreground">
+              {authorNickname.charAt(0)}
+            </div>
+          )}
+
           {/* 카테고리 뱃지 */}
           <span
             onClick={(e) => onCategoryClick(e, category)}

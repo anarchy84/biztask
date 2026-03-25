@@ -1,7 +1,8 @@
 // 파일 위치: app/components/Header.tsx
-// 용도: BizTask 다크 헤더 - 형광 그린 글로우 검색창
+// 용도: BizTask 다크 헤더 - 형광 그린 글로우 검색창 + 프로필 아바타 이미지 표시
 // 레이아웃: Tailwind 유틸리티만 사용 (max-w-7xl mx-auto px-4 md:px-8)
 // 브랜드: 형광 그린 #73e346 계열
+// user_metadata.avatar_url이 있으면 이미지를, 없으면 이니셜을 표시
 
 "use client";
 
@@ -15,6 +16,8 @@ export default function Header() {
   // ─── 상태 관리 ───
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [nickname, setNickname] = useState<string>("");
 
   const router = useRouter();
 
@@ -24,16 +27,49 @@ export default function Header() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        // user_metadata에서 아바타 URL과 닉네임 가져오기
+        const metadata = currentUser.user_metadata;
+        setAvatarUrl(metadata?.avatar_url || null);
+        setNickname(metadata?.nickname || "");
+
+        // profiles 테이블에서도 최신 정보 가져오기 (metadata보다 정확)
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("avatar_url, nickname")
+          .eq("id", currentUser.id)
+          .single();
+
+        if (profile) {
+          if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
+          if (profile.nickname) setNickname(profile.nickname);
+        }
+      }
+
       setLoading(false);
     };
 
     getUser();
 
+    // 인증 상태 변경 감지 (로그인/로그아웃/프로필 업데이트)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        const metadata = currentUser.user_metadata;
+        setAvatarUrl(metadata?.avatar_url || null);
+        setNickname(metadata?.nickname || "");
+      } else {
+        setAvatarUrl(null);
+        setNickname("");
+      }
     });
 
     return () => {
@@ -45,15 +81,21 @@ export default function Header() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setAvatarUrl(null);
+    setNickname("");
     router.push("/");
     router.refresh();
   };
 
   // ─── 유저 이메일에서 첫 글자 추출 ───
   const getUserInitial = () => {
+    if (nickname) return nickname.charAt(0).toUpperCase();
     if (!user?.email) return "?";
     return user.email.charAt(0).toUpperCase();
   };
+
+  // ─── 표시용 이름 (닉네임 > 이메일) ───
+  const displayName = nickname || user?.email || "";
 
   return (
     <header className="sticky top-0 z-50 border-b border-border-color bg-header-bg">
@@ -107,16 +149,24 @@ export default function Header() {
                 <Bell className="h-5 w-5" />
               </button>
 
-              {/* 유저 아바타 */}
+              {/* 유저 아바타 (프로필 이미지 또는 이니셜) */}
               <a
                 href="/mypage"
                 className="flex items-center gap-2 rounded-full border border-border-color px-2 py-1 hover:border-foreground"
               >
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-black text-xs font-bold">
-                  {getUserInitial()}
-                </div>
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt="프로필"
+                    className="h-6 w-6 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-black text-xs font-bold">
+                    {getUserInitial()}
+                  </div>
+                )}
                 <span className="hidden text-sm font-medium text-foreground sm:block max-w-[100px] truncate">
-                  {user.email}
+                  {displayName}
                 </span>
               </a>
 

@@ -1,10 +1,11 @@
 // 파일 위치: app/mypage/page.tsx
-// 용도: 마이페이지 - 레딧 다크 테마 적용
-// 구성: 프로필 헤더 / 정보 수정 폼 / 내가 쓴 글·댓글 탭
+// 용도: 마이페이지 - 프로필 이미지 업로드 + 닉네임 수정 + 내가 쓴 글·댓글 탭
+// Supabase Storage 'avatars' 버킷에 이미지 업로드 → profiles.avatar_url 업데이트
+// 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
 import {
@@ -23,6 +24,8 @@ import {
   Heart,
   ArrowBigUp,
   Clock,
+  Camera,
+  ImagePlus,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -101,6 +104,10 @@ export default function MyPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // 이미지 업로드 관련 상태
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // 수정 폼 상태
   const [editNickname, setEditNickname] = useState("");
   const [editBio, setEditBio] = useState("");
@@ -130,6 +137,7 @@ export default function MyPage() {
       .single();
 
     if (fetchError || !data) {
+      // 프로필이 없으면 기본 생성
       const defaultNickname =
         (await supabase.auth.getUser()).data.user?.email?.split("@")[0] || "익명";
       const { data: newProfile } = await supabase
@@ -233,6 +241,91 @@ export default function MyPage() {
     );
   };
 
+  // ═══════════════════════════════════════════════════════
+  // 프로필 이미지 업로드 핸들러
+  // 1. 파일 선택 → 2. Supabase Storage 업로드 → 3. public URL 획득
+  // 4. profiles 테이블 avatar_url 업데이트 → 5. user_metadata 업데이트
+  // ═══════════════════════════════════════════════════════
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    // 파일 타입 검증 (이미지만 허용)
+    if (!file.type.startsWith("image/")) {
+      setError("이미지 파일만 업로드할 수 있습니다. (jpg, png, gif, webp)");
+      return;
+    }
+
+    // 파일 크기 제한 (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setError("이미지 크기는 2MB 이하만 가능합니다.");
+      return;
+    }
+
+    setUploading(true);
+    setError("");
+
+    try {
+      // 파일 확장자 추출
+      const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      // 유저 ID 기반 고유 파일명 (덮어쓰기 방식으로 스토리지 절약)
+      const filePath = `${user.id}/avatar.${fileExt}`;
+
+      // Supabase Storage에 업로드 (기존 파일 덮어쓰기)
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true, // 같은 경로면 덮어쓰기
+        });
+
+      if (uploadError) {
+        setError("이미지 업로드에 실패했습니다: " + uploadError.message);
+        return;
+      }
+
+      // 업로드된 파일의 공개 URL 획득
+      const { data: urlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      const publicUrl = urlData.publicUrl;
+
+      // 캐시 무효화를 위해 타임스탬프 쿼리 파라미터 추가
+      const avatarUrlWithCache = `${publicUrl}?t=${Date.now()}`;
+
+      // profiles 테이블의 avatar_url 업데이트
+      const { error: dbError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: avatarUrlWithCache })
+        .eq("id", user.id);
+
+      if (dbError) {
+        setError("프로필 업데이트에 실패했습니다: " + dbError.message);
+        return;
+      }
+
+      // Supabase Auth user_metadata에도 avatar_url 저장
+      // (Header 등에서 빠르게 접근하기 위함)
+      await supabase.auth.updateUser({
+        data: { avatar_url: avatarUrlWithCache },
+      });
+
+      // 프로필 새로고침
+      await fetchProfile(user.id);
+      setSuccess("프로필 이미지가 변경되었습니다!");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch {
+      setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setUploading(false);
+      // file input 초기화 (같은 파일 재선택 가능하도록)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
   // ─── 프로필 저장 핸들러 ───
   const handleSave = async () => {
     if (!user) return;
@@ -261,6 +354,11 @@ export default function MyPage() {
     if (updateError) {
       setError("저장에 실패했습니다: " + updateError.message);
     } else {
+      // user_metadata에도 닉네임 동기화
+      await supabase.auth.updateUser({
+        data: { nickname: editNickname.trim() },
+      });
+
       setSuccess("프로필이 업데이트되었습니다.");
       setIsEditing(false);
       await fetchProfile(user.id);
@@ -288,11 +386,57 @@ export default function MyPage() {
       {/* ═══════════════════════════════════════════════════════ */}
       <div className="mb-6 rounded-xl border border-border-color bg-card-bg p-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-          {/* 프로필 아바타 */}
+          {/* 프로필 아바타 (클릭하면 이미지 업로드) */}
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-light text-4xl font-bold text-white shadow-lg">
-              {avatarInitial}
-            </div>
+            {/* 숨겨진 파일 입력 (이미지만 허용) */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onChange={handleAvatarUpload}
+              className="hidden"
+              aria-label="프로필 이미지 업로드"
+            />
+
+            {/* 아바타 원형 버튼 — 클릭 시 파일 선택 창 열림 */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="group relative flex h-24 w-24 items-center justify-center rounded-full overflow-hidden shadow-lg transition-all hover:shadow-primary/30 disabled:opacity-60"
+              aria-label="프로필 이미지 변경"
+            >
+              {/* 프로필 이미지 또는 이니셜 */}
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="프로필 이미지"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary to-primary-light text-4xl font-bold text-white">
+                  {avatarInitial}
+                </div>
+              )}
+
+              {/* 호버 오버레이 (카메라 아이콘 + 텍스트) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                {uploading ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                ) : (
+                  <>
+                    <Camera className="h-5 w-5 text-white" />
+                    <span className="mt-1 text-[10px] font-medium text-white">
+                      변경
+                    </span>
+                  </>
+                )}
+              </div>
+            </button>
+
+            {/* 업로드 중 표시 */}
+            {uploading && (
+              <span className="text-xs text-primary">업로드 중...</span>
+            )}
           </div>
 
           {/* 프로필 정보 */}
@@ -413,6 +557,40 @@ export default function MyPage() {
           )}
 
           <div className="space-y-4">
+            {/* 프로필 이미지 변경 (수정 모드 내) */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <ImagePlus className="h-4 w-4 text-muted" />
+                프로필 이미지
+              </label>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="group relative flex h-16 w-16 items-center justify-center rounded-full overflow-hidden border-2 border-dashed border-border-color hover:border-primary transition-colors disabled:opacity-60"
+                >
+                  {profile?.avatar_url ? (
+                    <img
+                      src={profile.avatar_url}
+                      alt="프로필"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Camera className="h-5 w-5 text-muted group-hover:text-primary" />
+                  )}
+                  {uploading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </button>
+                <div className="text-xs text-muted">
+                  <p>JPG, PNG, GIF, WebP (최대 2MB)</p>
+                  <p className="mt-0.5">클릭하여 이미지를 변경하세요</p>
+                </div>
+              </div>
+            </div>
+
             {/* 닉네임 */}
             <div>
               <label className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
@@ -577,6 +755,13 @@ export default function MyPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 에러 메시지 (수정 모드가 아닐 때) */}
+      {error && !isEditing && (
+        <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          {error}
         </div>
       )}
 
