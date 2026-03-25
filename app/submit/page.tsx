@@ -1,13 +1,18 @@
 // 파일 위치: app/submit/page.tsx
 // 용도: 새 글 작성 페이지 (다크 테마)
-// - 비로그인 사용자 → 로그인 페이지로 리다이렉트
-// - 로그인 사용자 → 제목/카테고리/본문 입력 → Supabase posts 테이블에 저장
+// 기능:
+//   - 비로그인 사용자 → 로그인 페이지로 리다이렉트
+//   - 로그인 사용자 → 제목/카테고리/본문/미디어 첨부 → Supabase posts 테이블에 저장
+//   - 이미지 첨부 시 browser-image-compression으로 자동 압축 (maxSizeMB: 1, maxWidthOrHeight: 1920)
+//   - 동영상 첨부 시 50MB 하드 리미트 검증
+// 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
+import imageCompression from "browser-image-compression";
 import {
   FileText,
   Type,
@@ -15,11 +20,47 @@ import {
   Tag,
   Loader2,
   ArrowLeft,
+  Paperclip,
+  ImageIcon,
+  Film,
+  X,
+  CheckCircle2,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 // 카테고리 옵션 목록
 const CATEGORIES = ["자유", "사업", "마케팅", "커리어"];
+
+// ═══════════════════════════════════════════════════════
+// 미디어 파일 제한 상수
+// 이미지: 압축 후 최대 1MB / 1920px
+// 동영상: 원본 최대 50MB (클라이언트 단 압축 불가하므로 하드 리미트)
+// ═══════════════════════════════════════════════════════
+const IMAGE_COMPRESSION_OPTIONS = {
+  maxSizeMB: 1, // 압축 후 최대 1MB
+  maxWidthOrHeight: 1920, // 가로 또는 세로 최대 1920px
+  useWebWorker: true, // 웹 워커 사용 (메인 스레드 블로킹 방지)
+};
+const VIDEO_MAX_SIZE_MB = 50; // 동영상 최대 50MB
+const VIDEO_MAX_SIZE_BYTES = VIDEO_MAX_SIZE_MB * 1024 * 1024;
+
+// ─── 첨부 파일 타입 정의 ───
+type AttachedFile = {
+  id: string; // 고유 식별자 (미리보기 key용)
+  file: File; // 실제 파일 객체 (압축 후)
+  originalName: string; // 원본 파일명
+  type: "image" | "video" | "other"; // 파일 분류
+  previewUrl: string | null; // 이미지 미리보기 URL
+  originalSize: number; // 압축 전 원본 크기 (바이트)
+  compressedSize: number; // 압축 후 크기 (바이트)
+};
+
+// ─── 파일 크기를 읽기 좋은 문자열로 변환 ───
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 export default function SubmitPage() {
   // ─── 상태 관리 ───
@@ -30,6 +71,12 @@ export default function SubmitPage() {
   const [category, setCategory] = useState("자유");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // ─── 파일 첨부 관련 상태 ───
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]); // 첨부된 파일 목록
+  const [compressing, setCompressing] = useState(false); // 이미지 압축 진행 중 여부
+  const [compressProgress, setCompressProgress] = useState(""); // 압축 진행 상태 메시지
+  const fileInputRef = useRef<HTMLInputElement>(null); // 파일 입력 ref
 
   const router = useRouter();
 
@@ -51,6 +98,146 @@ export default function SubmitPage() {
 
     checkAuth();
   }, [router]);
+
+  // ─── 컴포넌트 언마운트 시 미리보기 URL 정리 (메모리 누수 방지) ───
+  useEffect(() => {
+    return () => {
+      attachedFiles.forEach((af) => {
+        if (af.previewUrl) URL.revokeObjectURL(af.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ═══════════════════════════════════════════════════════
+  // 파일 선택 핸들러
+  // 1. 이미지 파일 → browser-image-compression으로 자동 압축
+  // 2. 동영상 파일 → 50MB 초과 시 업로드 차단
+  // 3. 기타 파일 → 50MB 초과 시 업로드 차단
+  // ═══════════════════════════════════════════════════════
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    setError("");
+    setCompressing(true);
+    setCompressProgress("파일을 처리하고 있습니다...");
+
+    const newAttachedFiles: AttachedFile[] = [];
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const originalFile = selectedFiles[i];
+      const fileType = originalFile.type;
+
+      // ─── 이미지 파일 처리: 자동 압축 ───
+      if (fileType.startsWith("image/")) {
+        try {
+          setCompressProgress(
+            `이미지 최적화 중... (${i + 1}/${selectedFiles.length}) "${originalFile.name}"`
+          );
+
+          // browser-image-compression 라이브러리로 압축 실행
+          // WebWorker를 사용하여 메인 스레드 블로킹 없이 백그라운드 압축
+          const compressedBlob = await imageCompression(
+            originalFile,
+            IMAGE_COMPRESSION_OPTIONS
+          );
+
+          // 압축된 Blob을 File 객체로 변환 (Supabase Storage 업로드에 File 객체 필요)
+          const compressedFile = new File(
+            [compressedBlob],
+            originalFile.name,
+            { type: compressedBlob.type, lastModified: Date.now() }
+          );
+
+          // 이미지 미리보기 URL 생성
+          const previewUrl = URL.createObjectURL(compressedFile);
+
+          newAttachedFiles.push({
+            id: `${Date.now()}-${i}`,
+            file: compressedFile,
+            originalName: originalFile.name,
+            type: "image",
+            previewUrl,
+            originalSize: originalFile.size,
+            compressedSize: compressedFile.size,
+          });
+        } catch {
+          // 압축 실패 시 원본 파일을 그대로 사용
+          const previewUrl = URL.createObjectURL(originalFile);
+          newAttachedFiles.push({
+            id: `${Date.now()}-${i}`,
+            file: originalFile,
+            originalName: originalFile.name,
+            type: "image",
+            previewUrl,
+            originalSize: originalFile.size,
+            compressedSize: originalFile.size,
+          });
+        }
+
+        // ─── 동영상 파일 처리: 50MB 하드 리미트 검증 ───
+      } else if (fileType.startsWith("video/")) {
+        if (originalFile.size > VIDEO_MAX_SIZE_BYTES) {
+          alert(
+            `동영상은 ${VIDEO_MAX_SIZE_MB}MB 이하만 업로드 가능합니다.\n` +
+              `선택한 파일: "${originalFile.name}" (${formatFileSize(originalFile.size)})`
+          );
+          continue; // 이 파일은 건너뛰고 다음 파일 처리
+        }
+
+        newAttachedFiles.push({
+          id: `${Date.now()}-${i}`,
+          file: originalFile,
+          originalName: originalFile.name,
+          type: "video",
+          previewUrl: null,
+          originalSize: originalFile.size,
+          compressedSize: originalFile.size,
+        });
+
+        // ─── 기타 파일 처리: 50MB 하드 리미트 검증 ───
+      } else {
+        if (originalFile.size > VIDEO_MAX_SIZE_BYTES) {
+          alert(
+            `파일은 ${VIDEO_MAX_SIZE_MB}MB 이하만 업로드 가능합니다.\n` +
+              `선택한 파일: "${originalFile.name}" (${formatFileSize(originalFile.size)})`
+          );
+          continue;
+        }
+
+        newAttachedFiles.push({
+          id: `${Date.now()}-${i}`,
+          file: originalFile,
+          originalName: originalFile.name,
+          type: "other",
+          previewUrl: null,
+          originalSize: originalFile.size,
+          compressedSize: originalFile.size,
+        });
+      }
+    }
+
+    // 기존 첨부 파일 목록에 새로 처리된 파일 추가
+    setAttachedFiles((prev) => [...prev, ...newAttachedFiles]);
+    setCompressing(false);
+    setCompressProgress("");
+
+    // file input 초기화 (같은 파일 재선택 가능하도록)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // ─── 첨부 파일 삭제 핸들러 ───
+  const removeFile = (fileId: string) => {
+    setAttachedFiles((prev) => {
+      const target = prev.find((f) => f.id === fileId);
+      // 미리보기 URL이 있으면 메모리에서 해제
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((f) => f.id !== fileId);
+    });
+  };
 
   // ─── 글 발행 핸들러 ───
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,11 +284,46 @@ export default function SubmitPage() {
         }
       }
 
-      // 2단계: 게시글 저장
+      // 2단계: 첨부 파일이 있으면 Supabase Storage에 업로드
+      const uploadedUrls: string[] = [];
+
+      for (const af of attachedFiles) {
+        const fileExt = af.originalName.split(".").pop()?.toLowerCase() || "bin";
+        const filePath = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("post-media")
+          .upload(filePath, af.file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) {
+          // Storage 버킷이 없을 수도 있으므로 에러 무시하고 계속 진행
+          console.warn("파일 업로드 실패:", uploadError.message);
+          continue;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from("post-media")
+          .getPublicUrl(filePath);
+
+        if (urlData?.publicUrl) {
+          uploadedUrls.push(urlData.publicUrl);
+        }
+      }
+
+      // 3단계: 게시글 저장
+      // 첨부 파일 URL은 본문 끝에 추가하거나, media_urls 컬럼이 있으면 별도 저장
+      const finalContent =
+        uploadedUrls.length > 0
+          ? `${content.trim()}\n\n---\n첨부파일:\n${uploadedUrls.map((url) => `- ${url}`).join("\n")}`
+          : content.trim();
+
       const { error: insertError } = await supabase.from("posts").insert({
         author_id: user.id,
         title: title.trim(),
-        content: content.trim(),
+        content: finalContent,
         category,
       });
 
@@ -114,7 +336,7 @@ export default function SubmitPage() {
         return;
       }
 
-      // 3단계: 성공 → 홈으로 이동
+      // 4단계: 성공 → 홈으로 이동
       router.push("/");
       router.refresh();
     } catch {
@@ -226,6 +448,112 @@ export default function SubmitPage() {
             />
           </div>
 
+          {/* ═══════════════════════════════════════════════════════ */}
+          {/* 파일 첨부 영역                                           */}
+          {/* 이미지: 자동 압축 (1MB/1920px), 동영상: 50MB 하드 리미트    */}
+          {/* ═══════════════════════════════════════════════════════ */}
+          <div>
+            <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Paperclip className="h-4 w-4 text-muted" />
+              미디어 첨부
+              <span className="text-xs font-normal text-muted">
+                (이미지 자동 압축 · 동영상 최대 50MB)
+              </span>
+            </label>
+
+            {/* 파일 선택 버튼 (숨겨진 input + 커스텀 버튼) */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+              aria-label="미디어 파일 첨부"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={compressing || submitting}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border-color py-4 text-sm text-muted transition-all hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {compressing ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span className="text-primary font-medium">
+                    {compressProgress || "이미지 최적화 중..."}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <ImageIcon className="h-5 w-5" />
+                  <span>이미지 또는 동영상 추가</span>
+                </>
+              )}
+            </button>
+
+            {/* ─── 첨부된 파일 미리보기 목록 ─── */}
+            {attachedFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {attachedFiles.map((af) => (
+                  <div
+                    key={af.id}
+                    className="flex items-center gap-3 rounded-lg border border-border-color bg-hover-bg p-2.5"
+                  >
+                    {/* 파일 아이콘 또는 이미지 썸네일 */}
+                    {af.type === "image" && af.previewUrl ? (
+                      <img
+                        src={af.previewUrl}
+                        alt={af.originalName}
+                        className="h-12 w-12 rounded-md object-cover shrink-0"
+                      />
+                    ) : af.type === "video" ? (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-purple-500/20 shrink-0">
+                        <Film className="h-5 w-5 text-purple-400" />
+                      </div>
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-gray-500/20 shrink-0">
+                        <Paperclip className="h-5 w-5 text-gray-400" />
+                      </div>
+                    )}
+
+                    {/* 파일 정보 */}
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {af.originalName}
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-muted">
+                        {af.type === "image" && af.originalSize !== af.compressedSize ? (
+                          // 이미지: 압축 전후 크기 비교 표시
+                          <span className="flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-green-400" />
+                            {formatFileSize(af.originalSize)} → {formatFileSize(af.compressedSize)}
+                            <span className="text-green-400">
+                              ({Math.round((1 - af.compressedSize / af.originalSize) * 100)}% 절감)
+                            </span>
+                          </span>
+                        ) : (
+                          <span>{formatFileSize(af.compressedSize)}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 삭제 버튼 */}
+                    <button
+                      type="button"
+                      onClick={() => removeFile(af.id)}
+                      className="rounded-full p-1.5 text-muted hover:bg-red-500/20 hover:text-red-400 shrink-0"
+                      aria-label={`${af.originalName} 삭제`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 하단: 취소 + 발행 버튼 */}
           <div className="flex items-center justify-end gap-3 border-t border-border-color pt-4">
             <button
@@ -237,13 +565,18 @@ export default function SubmitPage() {
             </button>
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || compressing}
               className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-black hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   발행 중...
+                </>
+              ) : compressing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  이미지 최적화 중...
                 </>
               ) : (
                 "발행하기"

@@ -122,6 +122,20 @@ export default function PostDetailClient() {
   // 더보기 메뉴 (수정/삭제) 토글 상태
   const [showMenu, setShowMenu] = useState(false);
 
+  // ─── 댓글 인라인 수정 관련 상태 ───
+  // editingCommentId: 현재 수정 중인 댓글의 ID (null이면 수정 모드 아님)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  // editCommentText: 수정 중인 댓글의 텍스트
+  const [editCommentText, setEditCommentText] = useState("");
+  // editCommentSaving: 댓글 수정 저장 중 로딩 상태
+  const [editCommentSaving, setEditCommentSaving] = useState(false);
+
+  // ─── 공유/저장(북마크) 관련 상태 ───
+  // isSaved: 현재 유저가 이 게시글을 북마크했는지 여부
+  const [isSaved, setIsSaved] = useState(false);
+  // shareToast: 공유 링크 복사 완료 토스트 메시지 표시 여부
+  const [shareToast, setShareToast] = useState(false);
+
   // ─── 게시글 불러오기 ───
   const fetchPost = useCallback(async () => {
     const { data } = await supabase
@@ -165,6 +179,21 @@ export default function PostDetailClient() {
     [postId]
   );
 
+  // ─── 내가 이 글을 저장(북마크)했는지 확인 ───
+  const checkMySave = useCallback(
+    async (userId: string) => {
+      const { data } = await supabase
+        .from("saved_posts")
+        .select("id")
+        .eq("post_id", postId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      setIsSaved(!!data);
+    },
+    [postId]
+  );
+
   // ─── 초기 데이터 로드 ───
   useEffect(() => {
     const init = async () => {
@@ -174,7 +203,10 @@ export default function PostDetailClient() {
 
       if (session?.user) {
         setUser(session.user);
-        await checkMyLike(session.user.id);
+        await Promise.all([
+          checkMyLike(session.user.id),
+          checkMySave(session.user.id),
+        ]);
 
         // 내 프로필 아바타 가져오기 (댓글 입력 영역 표시용)
         const { data: myProfile } = await supabase
@@ -193,7 +225,7 @@ export default function PostDetailClient() {
     };
 
     init();
-  }, [fetchPost, fetchComments, checkMyLike]);
+  }, [fetchPost, fetchComments, checkMyLike, checkMySave]);
 
   // ─── 더보기 메뉴 외부 클릭 시 닫기 ───
   useEffect(() => {
@@ -350,6 +382,98 @@ export default function PostDetailClient() {
       .eq("id", postId);
 
     await Promise.all([fetchComments(), fetchPost()]);
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // 댓글 인라인 수정 핸들러
+  // 1. [수정] 버튼 클릭 → 해당 댓글을 textarea로 전환
+  // 2. [저장] 버튼 클릭 → Supabase comments 테이블 update
+  // 3. [취소] 버튼 클릭 → 수정 모드 해제
+  // ═══════════════════════════════════════════════════════
+
+  // 수정 모드 시작: 기존 댓글 내용을 textarea에 채움
+  const startEditComment = (comment: Comment) => {
+    setEditingCommentId(comment.id);
+    setEditCommentText(comment.content);
+  };
+
+  // 수정 취소: 수정 모드 해제
+  const cancelEditComment = () => {
+    setEditingCommentId(null);
+    setEditCommentText("");
+  };
+
+  // 수정 저장: Supabase에 업데이트 요청
+  const saveEditComment = async (commentId: string) => {
+    if (!user || !editCommentText.trim()) return;
+
+    setEditCommentSaving(true);
+
+    try {
+      const { error: updateError } = await supabase
+        .from("comments")
+        .update({ content: editCommentText.trim() })
+        .eq("id", commentId)
+        .eq("user_id", user.id); // 본인 댓글만 수정 가능 (안전장치)
+
+      if (updateError) {
+        alert("댓글 수정에 실패했습니다: " + updateError.message);
+        return;
+      }
+
+      // 수정 모드 해제 + 댓글 목록 새로고침
+      setEditingCommentId(null);
+      setEditCommentText("");
+      await fetchComments();
+    } catch {
+      alert("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+    } finally {
+      setEditCommentSaving(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // 공유 기능: 현재 게시글 URL을 클립보드에 복사
+  // ═══════════════════════════════════════════════════════
+  const handleShare = async () => {
+    try {
+      // 현재 페이지 URL을 클립보드에 복사
+      await navigator.clipboard.writeText(window.location.href);
+      // 토스트 메시지 표시 (2초 후 자동 사라짐)
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 2000);
+    } catch {
+      // 클립보드 API 지원 안 되는 경우 fallback
+      alert("링크가 복사되었습니다: " + window.location.href);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // 저장(북마크) 토글: saved_posts 테이블에 insert/delete
+  // ═══════════════════════════════════════════════════════
+  const handleToggleSave = async () => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    if (isSaved) {
+      // 이미 저장된 상태 → 저장 해제 (delete)
+      await supabase
+        .from("saved_posts")
+        .delete()
+        .eq("post_id", postId)
+        .eq("user_id", user.id);
+
+      setIsSaved(false);
+    } else {
+      // 저장하지 않은 상태 → 저장 (insert)
+      await supabase
+        .from("saved_posts")
+        .insert({ post_id: postId, user_id: user.id });
+
+      setIsSaved(true);
+    }
   };
 
   // ─── 로딩 화면 ───
@@ -530,18 +654,34 @@ export default function PostDetailClient() {
               {post.comment_count}
             </span>
 
-            {/* 공유 */}
-            <button className="interaction-pill">
+            {/* 공유 — 클릭 시 URL 클립보드 복사 */}
+            <button onClick={handleShare} className="interaction-pill">
               <Share2 className="h-4 w-4" />
               <span className="hidden sm:inline">공유</span>
             </button>
 
-            {/* 저장 */}
-            <button className="interaction-pill">
-              <Bookmark className="h-4 w-4" />
-              <span className="hidden sm:inline">저장</span>
+            {/* 저장(북마크) — 클릭 시 saved_posts 토글 */}
+            <button
+              onClick={handleToggleSave}
+              className={`interaction-pill ${isSaved ? "text-primary" : ""}`}
+            >
+              <Bookmark
+                className="h-4 w-4"
+                fill={isSaved ? "currentColor" : "none"}
+              />
+              <span className="hidden sm:inline">
+                {isSaved ? "저장됨" : "저장"}
+              </span>
             </button>
           </div>
+
+          {/* 공유 완료 토스트 메시지 */}
+          {shareToast && (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary animate-pulse">
+              <Share2 className="h-3 w-3" />
+              링크가 클립보드에 복사되었습니다!
+            </div>
+          )}
         </div>
       </article>
 
@@ -648,7 +788,7 @@ export default function PostDetailClient() {
 
                   {/* 댓글 내용 */}
                   <div className="flex-1 min-w-0">
-                    {/* 작성자 + 시간 */}
+                    {/* 작성자 + 시간 + 수정/삭제 버튼 */}
                     <div className="mb-1 flex items-center gap-2 text-xs">
                       <span className="font-medium text-foreground">
                         {commentNickname}
@@ -657,23 +797,71 @@ export default function PostDetailClient() {
                         {timeAgo(comment.created_at)}
                       </span>
 
-                      {/* 본인 댓글이면 삭제 버튼 표시 */}
-                      {user && user.id === comment.user_id && (
-                        <button
-                          onClick={() => handleDeleteComment(comment.id)}
-                          className="ml-auto flex items-center gap-1 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
-                          aria-label="댓글 삭제"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          삭제
-                        </button>
+                      {/* 본인 댓글이면 수정/삭제 버튼 표시 */}
+                      {user && user.id === comment.user_id && editingCommentId !== comment.id && (
+                        <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                          {/* 수정 버튼 */}
+                          <button
+                            onClick={() => startEditComment(comment)}
+                            className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+                            aria-label="댓글 수정"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            수정
+                          </button>
+                          {/* 삭제 버튼 */}
+                          <button
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
+                            aria-label="댓글 삭제"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            삭제
+                          </button>
+                        </div>
                       )}
                     </div>
 
-                    {/* 댓글 본문 */}
-                    <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                      {comment.content}
-                    </p>
+                    {/* ─── 댓글 본문 또는 인라인 수정 textarea ─── */}
+                    {editingCommentId === comment.id ? (
+                      // 수정 모드: textarea + 저장/취소 버튼
+                      <div className="mt-1">
+                        <textarea
+                          value={editCommentText}
+                          onChange={(e) => setEditCommentText(e.target.value)}
+                          rows={3}
+                          className="w-full resize-none rounded-lg border border-primary/50 bg-input-bg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                          autoFocus
+                        />
+                        <div className="mt-1.5 flex items-center gap-2">
+                          {/* 저장 버튼 */}
+                          <button
+                            onClick={() => saveEditComment(comment.id)}
+                            disabled={editCommentSaving || !editCommentText.trim()}
+                            className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-black hover:bg-primary-hover disabled:opacity-50"
+                          >
+                            {editCommentSaving ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Send className="h-3 w-3" />
+                            )}
+                            저장
+                          </button>
+                          {/* 취소 버튼 */}
+                          <button
+                            onClick={cancelEditComment}
+                            className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-hover-bg hover:text-foreground"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      // 일반 모드: 댓글 본문 텍스트
+                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                        {comment.content}
+                      </p>
+                    )}
                   </div>
                 </div>
               );

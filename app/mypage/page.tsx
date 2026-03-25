@@ -1,13 +1,17 @@
 // 파일 위치: app/mypage/page.tsx
 // 용도: 마이페이지 - 프로필 이미지 업로드 + 닉네임 수정 + 내가 쓴 글·댓글 탭
 // Supabase Storage 'avatars' 버킷에 이미지 업로드 → profiles.avatar_url 업데이트
+// 프로필 이미지 업로드 시 browser-image-compression으로 자동 압축
+//   → 썸네일 용도이므로 maxSizeMB: 0.5 / maxWidthOrHeight: 800
 // 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
+import imageCompression from "browser-image-compression";
 import {
   User,
   BadgeCheck,
@@ -28,6 +32,17 @@ import {
   ImagePlus,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+
+// ═══════════════════════════════════════════════════════
+// 프로필 이미지 압축 옵션
+// 썸네일 용도이므로 게시글보다 더 강력하게 압축
+// maxSizeMB: 0.5 (500KB), maxWidthOrHeight: 800px
+// ═══════════════════════════════════════════════════════
+const AVATAR_COMPRESSION_OPTIONS = {
+  maxSizeMB: 0.5, // 압축 후 최대 500KB
+  maxWidthOrHeight: 800, // 가로 또는 세로 최대 800px
+  useWebWorker: true, // 웹 워커 사용 (메인 스레드 블로킹 방지)
+};
 
 // ─── 프로필 타입 정의 ───
 type Profile = {
@@ -54,6 +69,15 @@ type MyPost = {
   upvotes: number;
   comment_count: number;
   created_at: string;
+};
+
+// ─── 내가 단 댓글 타입 (게시글 제목 포함) ───
+type MyComment = {
+  id: string;
+  post_id: string;
+  content: string;
+  created_at: string;
+  posts: { title: string } | { title: string }[] | null;
 };
 
 // ─── 카테고리 색상 매핑 (다크 테마) ───
@@ -106,6 +130,8 @@ export default function MyPage() {
 
   // 이미지 업로드 관련 상태
   const [uploading, setUploading] = useState(false);
+  // 이미지 압축 진행 중 상태 (압축 중에는 버튼 비활성화 + "이미지 최적화 중..." 표시)
+  const [compressingAvatar, setCompressingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 수정 폼 상태
@@ -121,6 +147,10 @@ export default function MyPage() {
   const [activeTab, setActiveTab] = useState<"posts" | "comments">("posts");
   const [myPosts, setMyPosts] = useState<MyPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+
+  // 내가 단 댓글 목록
+  const [myComments, setMyComments] = useState<MyComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
 
   // 팔로워/팔로잉 숫자
   const [followerCount, setFollowerCount] = useState(0);
@@ -191,6 +221,20 @@ export default function MyPage() {
     setPostsLoading(false);
   }, []);
 
+  // ─── 내가 단 댓글 불러오기 ───
+  const fetchMyComments = useCallback(async (userId: string) => {
+    setCommentsLoading(true);
+    const { data } = await supabase
+      .from("comments")
+      .select(`id, post_id, content, created_at, posts ( title )`)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    setMyComments((data as MyComment[]) || []);
+    setCommentsLoading(false);
+  }, []);
+
   // ─── 마운트 시 인증 확인 + 데이터 로드 ───
   useEffect(() => {
     const init = async () => {
@@ -208,12 +252,13 @@ export default function MyPage() {
         fetchProfile(session.user.id),
         fetchFollowCounts(session.user.id),
         fetchMyPosts(session.user.id),
+        fetchMyComments(session.user.id),
       ]);
       setAuthLoading(false);
     };
 
     init();
-  }, [router, fetchProfile, fetchFollowCounts, fetchMyPosts]);
+  }, [router, fetchProfile, fetchFollowCounts, fetchMyPosts, fetchMyComments]);
 
   // ─── 수정 모드 진입 시 현재 값으로 폼 채우기 ───
   const startEditing = () => {
@@ -242,9 +287,14 @@ export default function MyPage() {
   };
 
   // ═══════════════════════════════════════════════════════
-  // 프로필 이미지 업로드 핸들러
-  // 1. 파일 선택 → 2. Supabase Storage 업로드 → 3. public URL 획득
-  // 4. profiles 테이블 avatar_url 업데이트 → 5. user_metadata 업데이트
+  // 프로필 이미지 업로드 핸들러 (browser-image-compression 적용)
+  // 흐름:
+  //   1. 파일 선택
+  //   2. 이미지 타입/크기 검증
+  //   3. browser-image-compression으로 자동 압축 (0.5MB / 800px)
+  //   4. 압축된 파일을 Supabase Storage 'avatars' 버킷에 업로드
+  //   5. public URL 획득 → profiles.avatar_url 업데이트
+  //   6. user_metadata에도 avatar_url 저장
   // ═══════════════════════════════════════════════════════
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -256,25 +306,46 @@ export default function MyPage() {
       return;
     }
 
-    // 파일 크기 제한 (2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      setError("이미지 크기는 2MB 이하만 가능합니다.");
+    // 원본 파일 크기 제한 (10MB — 압축 전 허용 범위를 넓혀서 UX 개선)
+    if (file.size > 10 * 1024 * 1024) {
+      setError("이미지 크기는 10MB 이하만 가능합니다.");
       return;
     }
 
     setUploading(true);
+    setCompressingAvatar(true);
     setError("");
 
     try {
-      // 파일 확장자 추출
+      // ─── Step 1: 이미지 압축 (프로필 썸네일용으로 더 강력하게) ───
+      // maxSizeMB: 0.5 (500KB), maxWidthOrHeight: 800px
+      let compressedFile: File;
+      try {
+        const compressedBlob = await imageCompression(
+          file,
+          AVATAR_COMPRESSION_OPTIONS
+        );
+        // Blob → File 변환 (Supabase Storage는 File 객체를 기대)
+        compressedFile = new File(
+          [compressedBlob],
+          file.name,
+          { type: compressedBlob.type, lastModified: Date.now() }
+        );
+      } catch {
+        // 압축 실패 시 원본 그대로 사용
+        compressedFile = file;
+      }
+
+      setCompressingAvatar(false); // 압축 완료, 업로드 단계로 전환
+
+      // ─── Step 2: Supabase Storage에 업로드 ───
       const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
       // 유저 ID 기반 고유 파일명 (덮어쓰기 방식으로 스토리지 절약)
       const filePath = `${user.id}/avatar.${fileExt}`;
 
-      // Supabase Storage에 업로드 (기존 파일 덮어쓰기)
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(filePath, file, {
+        .upload(filePath, compressedFile, {
           cacheControl: "3600",
           upsert: true, // 같은 경로면 덮어쓰기
         });
@@ -284,7 +355,7 @@ export default function MyPage() {
         return;
       }
 
-      // 업로드된 파일의 공개 URL 획득
+      // ─── Step 3: 업로드된 파일의 공개 URL 획득 ───
       const { data: urlData } = supabase.storage
         .from("avatars")
         .getPublicUrl(filePath);
@@ -294,7 +365,7 @@ export default function MyPage() {
       // 캐시 무효화를 위해 타임스탬프 쿼리 파라미터 추가
       const avatarUrlWithCache = `${publicUrl}?t=${Date.now()}`;
 
-      // profiles 테이블의 avatar_url 업데이트
+      // ─── Step 4: profiles 테이블의 avatar_url 업데이트 ───
       const { error: dbError } = await supabase
         .from("profiles")
         .update({ avatar_url: avatarUrlWithCache })
@@ -305,7 +376,7 @@ export default function MyPage() {
         return;
       }
 
-      // Supabase Auth user_metadata에도 avatar_url 저장
+      // ─── Step 5: Supabase Auth user_metadata에도 avatar_url 저장 ───
       // (Header 등에서 빠르게 접근하기 위함)
       await supabase.auth.updateUser({
         data: { avatar_url: avatarUrlWithCache },
@@ -319,6 +390,7 @@ export default function MyPage() {
       setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
       setUploading(false);
+      setCompressingAvatar(false);
       // file input 초기화 (같은 파일 재선택 가능하도록)
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -379,6 +451,9 @@ export default function MyPage() {
 
   const avatarInitial = user?.email?.charAt(0).toUpperCase() || "?";
 
+  // 아바타 버튼 비활성화 조건: 업로드 중이거나 압축 진행 중
+  const isAvatarBusy = uploading || compressingAvatar;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
       {/* ═══════════════════════════════════════════════════════ */}
@@ -401,7 +476,7 @@ export default function MyPage() {
             {/* 아바타 원형 버튼 — 클릭 시 파일 선택 창 열림 */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              disabled={isAvatarBusy}
               className="group relative flex h-24 w-24 items-center justify-center rounded-full overflow-hidden shadow-lg transition-all hover:shadow-primary/30 disabled:opacity-60"
               aria-label="프로필 이미지 변경"
             >
@@ -420,7 +495,7 @@ export default function MyPage() {
 
               {/* 호버 오버레이 (카메라 아이콘 + 텍스트) */}
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                {uploading ? (
+                {isAvatarBusy ? (
                   <Loader2 className="h-6 w-6 animate-spin text-white" />
                 ) : (
                   <>
@@ -433,8 +508,14 @@ export default function MyPage() {
               </div>
             </button>
 
-            {/* 업로드 중 표시 */}
-            {uploading && (
+            {/* 업로드/압축 중 상태 표시 */}
+            {compressingAvatar && (
+              <span className="flex items-center gap-1 text-xs text-primary">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                이미지 최적화 중...
+              </span>
+            )}
+            {uploading && !compressingAvatar && (
               <span className="text-xs text-primary">업로드 중...</span>
             )}
           </div>
@@ -566,7 +647,7 @@ export default function MyPage() {
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
+                  disabled={isAvatarBusy}
                   className="group relative flex h-16 w-16 items-center justify-center rounded-full overflow-hidden border-2 border-dashed border-border-color hover:border-primary transition-colors disabled:opacity-60"
                 >
                   {profile?.avatar_url ? (
@@ -578,15 +659,26 @@ export default function MyPage() {
                   ) : (
                     <Camera className="h-5 w-5 text-muted group-hover:text-primary" />
                   )}
-                  {uploading && (
+                  {isAvatarBusy && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/50">
                       <Loader2 className="h-5 w-5 animate-spin text-white" />
                     </div>
                   )}
                 </button>
                 <div className="text-xs text-muted">
-                  <p>JPG, PNG, GIF, WebP (최대 2MB)</p>
-                  <p className="mt-0.5">클릭하여 이미지를 변경하세요</p>
+                  {compressingAvatar ? (
+                    <p className="flex items-center gap-1 text-primary font-medium">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      이미지 최적화 중...
+                    </p>
+                  ) : uploading ? (
+                    <p className="text-primary font-medium">업로드 중...</p>
+                  ) : (
+                    <>
+                      <p>JPG, PNG, GIF, WebP (자동 압축)</p>
+                      <p className="mt-0.5">클릭하여 이미지를 변경하세요</p>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -803,7 +895,7 @@ export default function MyPage() {
             <MessageCircle className="h-4 w-4" />
             내가 단 댓글
             <span className="rounded-full bg-hover-bg px-2 py-0.5 text-xs">
-              0
+              {myComments.length}
             </span>
           </button>
         </div>
@@ -835,9 +927,10 @@ export default function MyPage() {
               ) : (
                 <div className="space-y-3">
                   {myPosts.map((post) => (
-                    <div
+                    <Link
                       key={post.id}
-                      className="rounded-lg border border-border-color p-3 hover:border-muted cursor-pointer transition-colors"
+                      href={`/post/${post.id}`}
+                      className="block rounded-lg border border-border-color p-3 hover:border-muted cursor-pointer transition-colors"
                     >
                       <div className="mb-1 flex items-center gap-2 text-xs">
                         <span
@@ -866,7 +959,7 @@ export default function MyPage() {
                           {post.comment_count}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -874,15 +967,56 @@ export default function MyPage() {
           )}
 
           {activeTab === "comments" && (
-            <div className="py-12 text-center">
-              <MessageCircle className="mx-auto mb-3 h-10 w-10 text-muted" />
-              <p className="mb-1 text-sm font-medium text-foreground">
-                댓글 기능 준비 중
-              </p>
-              <p className="text-xs text-muted">
-                다음 업데이트에서 댓글 기능이 추가될 예정입니다.
-              </p>
-            </div>
+            <>
+              {commentsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : myComments.length === 0 ? (
+                <div className="py-12 text-center">
+                  <MessageCircle className="mx-auto mb-3 h-10 w-10 text-muted" />
+                  <p className="mb-1 text-sm font-medium text-foreground">
+                    아직 작성한 댓글이 없습니다
+                  </p>
+                  <p className="text-xs text-muted">
+                    게시글에 댓글을 남겨보세요!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {myComments.map((comment) => {
+                    // posts가 배열일 수도 있고 객체일 수도 있으므로 안전하게 처리
+                    const postTitle = comment.posts
+                      ? Array.isArray(comment.posts)
+                        ? comment.posts[0]?.title || "삭제된 게시글"
+                        : comment.posts.title || "삭제된 게시글"
+                      : "삭제된 게시글";
+
+                    return (
+                      <Link
+                        key={comment.id}
+                        href={`/post/${comment.post_id}`}
+                        className="block rounded-lg border border-border-color p-3 hover:border-muted cursor-pointer transition-colors"
+                      >
+                        {/* 원본 게시글 제목 */}
+                        <div className="mb-1.5 flex items-center gap-2 text-xs text-muted">
+                          <FileText className="h-3 w-3" />
+                          <span className="truncate">{postTitle}</span>
+                          <span className="flex items-center gap-1 ml-auto shrink-0">
+                            <Clock className="h-3 w-3" />
+                            {timeAgo(comment.created_at)}
+                          </span>
+                        </div>
+                        {/* 내 댓글 내용 */}
+                        <p className="text-sm text-foreground line-clamp-2 whitespace-pre-wrap">
+                          {comment.content}
+                        </p>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

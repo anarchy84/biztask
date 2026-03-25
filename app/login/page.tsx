@@ -1,6 +1,10 @@
 // 파일 위치: app/login/page.tsx
 // 용도: 로그인 / 회원가입 통합 페이지 (다크 테마)
-// 탭으로 로그인 ↔ 회원가입 전환, Supabase Auth 연동
+// 기능:
+//   1. 구글 / 카카오 소셜 로그인 (Supabase OAuth)
+//   2. 이메일+비밀번호 로그인 / 회원가입
+//   3. 탭으로 로그인 ↔ 회원가입 전환
+// 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
@@ -9,6 +13,56 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+
+// ═══════════════════════════════════════════════════════
+// 구글 로고 SVG 컴포넌트
+// 공식 구글 브랜드 가이드라인의 4색 "G" 로고
+// ═══════════════════════════════════════════════════════
+function GoogleLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+        fill="#4285F4"
+      />
+      <path
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+        fill="#34A853"
+      />
+      <path
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+        fill="#EA4335"
+      />
+    </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 카카오 말풍선 로고 SVG 컴포넌트
+// 카카오 공식 브랜드 가이드라인의 말풍선 심볼
+// ═══════════════════════════════════════════════════════
+function KakaoLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M12 3C6.48 3 2 6.44 2 10.61c0 2.68 1.78 5.03 4.46 6.36-.15.54-.97 3.49-1 3.64 0 0-.02.17.09.23.11.07.24.01.24.01.32-.04 3.7-2.44 4.28-2.85.62.09 1.27.14 1.93.14 5.52 0 10-3.44 10-7.53C22 6.44 17.52 3 12 3z"
+        fill="#3C1E1E"
+      />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   // ─── 상태 관리 ───
@@ -19,11 +73,44 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false); // 비밀번호 보이기/숨기기
   const [error, setError] = useState(""); // 에러 메시지
   const [success, setSuccess] = useState(""); // 성공 메시지
-  const [loading, setLoading] = useState(false); // 로딩 상태
+  const [loading, setLoading] = useState(false); // 이메일 폼 로딩 상태
+  const [socialLoading, setSocialLoading] = useState<string | null>(null); // 소셜 로그인 로딩 ('google' | 'kakao' | null)
 
   const router = useRouter();
 
-  // ─── 폼 제출 핸들러 ───
+  // ═══════════════════════════════════════════════════════
+  // 소셜 로그인 핸들러 (Google / Kakao)
+  // Supabase signInWithOAuth를 호출하여 해당 프로바이더의
+  // 인증 페이지로 리다이렉트합니다.
+  // 로그인 성공 후 /auth/callback으로 돌아옵니다.
+  // ═══════════════════════════════════════════════════════
+  const handleSocialLogin = async (provider: "google" | "kakao") => {
+    setError("");
+    setSocialLoading(provider);
+
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          // 소셜 로그인 성공 후 돌아올 콜백 주소
+          // Supabase가 토큰 교환 후 홈('/')으로 최종 리다이렉트
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (oauthError) {
+        setError(`${provider === "google" ? "구글" : "카카오"} 로그인에 실패했습니다: ${oauthError.message}`);
+        setSocialLoading(null);
+      }
+      // 성공 시 Supabase가 자동으로 OAuth 페이지로 리다이렉트하므로
+      // setSocialLoading(null)은 호출하지 않음 (페이지가 바뀌므로)
+    } catch {
+      setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
+      setSocialLoading(null);
+    }
+  };
+
+  // ─── 이메일 폼 제출 핸들러 ───
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -151,6 +238,54 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {/* ═══════════════════════════════════════════════════════ */}
+          {/* 소셜 로그인 버튼 영역                                     */}
+          {/* 구글 / 카카오 OAuth 버튼을 이메일 폼 위에 큼직하게 배치      */}
+          {/* ═══════════════════════════════════════════════════════ */}
+          <div className="mb-5 space-y-3">
+            {/* ─── 구글 로그인 버튼 ─── */}
+            {/* 흰색 배경 + 진한 회색 텍스트 + 구글 4색 로고 */}
+            <button
+              onClick={() => handleSocialLogin("google")}
+              disabled={socialLoading !== null}
+              className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white py-3 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {socialLoading === "google" ? (
+                <Loader2 className="h-5 w-5 animate-spin text-gray-500" />
+              ) : (
+                <GoogleLogo className="h-5 w-5" />
+              )}
+              <span>Google로 3초 만에 시작하기</span>
+            </button>
+
+            {/* ─── 카카오 로그인 버튼 ─── */}
+            {/* 카카오 공식 노란색 배경(#FEE500) + 짙은 갈색 텍스트 + 말풍선 로고 */}
+            <button
+              onClick={() => handleSocialLogin("kakao")}
+              disabled={socialLoading !== null}
+              className="flex w-full items-center justify-center gap-3 rounded-lg bg-[#FEE500] py-3 text-sm font-medium text-[#3C1E1E] transition-all hover:bg-[#FDD835] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {socialLoading === "kakao" ? (
+                <Loader2 className="h-5 w-5 animate-spin text-[#3C1E1E]" />
+              ) : (
+                <KakaoLogo className="h-5 w-5" />
+              )}
+              <span>카카오로 1초 만에 시작하기</span>
+            </button>
+          </div>
+
+          {/* ─── 구분선 (Divider): "또는 이메일로 로그인" ─── */}
+          <div className="relative mb-5">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border-color" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-card-bg px-3 text-xs text-muted">
+                또는 이메일로 {isLogin ? "로그인" : "회원가입"}
+              </span>
+            </div>
+          </div>
+
           {/* ─── 에러 메시지 ─── */}
           {error && (
             <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -165,7 +300,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ─── 입력 폼 ─── */}
+          {/* ─── 이메일 입력 폼 ─── */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 이메일 입력 */}
             <div>
