@@ -1,5 +1,5 @@
 // 파일 위치: app/reset-password/page.tsx
-// 용도: 비밀번호 재설정 요청 페이지
+// 용도: 비밀번호 재설정 요청 페이지 (다크 테마)
 // 이메일 입력 → Supabase에서 재설정 링크 발송
 
 "use client";
@@ -12,7 +12,7 @@ import { Mail, ArrowLeft, ArrowRight, Loader2, CheckCircle } from "lucide-react"
 export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [sent, setSent] = useState(false); // 발송 완료 여부
+  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // ─── 재설정 링크 발송 핸들러 ───
@@ -31,7 +31,6 @@ export default function ResetPasswordPage() {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(
         email,
         {
-          // 유저가 이메일 링크를 클릭하면 이 URL로 리다이렉트됩니다
           redirectTo: `${window.location.origin}/update-password`,
         }
       );
@@ -41,7 +40,6 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // 발송 성공
       setSent(true);
     } catch {
       setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
@@ -51,7 +49,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center bg-background px-4 py-12">
+    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         {/* 상단: 로고 + 안내 */}
         <div className="mb-8 text-center">
@@ -66,12 +64,12 @@ export default function ResetPasswordPage() {
           </p>
         </div>
 
-        {/* 카드 본체 */}
-        <div className="rounded-xl border border-border-color bg-card-bg p-6 shadow-sm">
+        {/* 카드 본체 (다크 테마) */}
+        <div className="rounded-xl border border-border-color bg-card-bg p-6">
           {sent ? (
             /* ─── 발송 완료 화면 ─── */
             <div className="py-4 text-center">
-              <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-500" />
+              <CheckCircle className="mx-auto mb-4 h-12 w-12 text-green-400" />
               <h2 className="mb-2 text-lg font-bold text-foreground">
                 이메일이 발송되었습니다
               </h2>
@@ -89,7 +87,7 @@ export default function ResetPasswordPage() {
                     setSent(false);
                     setEmail("");
                   }}
-                  className="w-full rounded-lg border border-border-color py-2.5 text-sm font-medium text-muted hover:bg-gray-50"
+                  className="w-full rounded-lg border border-border-color py-2.5 text-sm font-medium text-muted hover:bg-hover-bg hover:text-foreground"
                 >
                   다른 이메일로 다시 보내기
                 </button>
@@ -104,9 +102,8 @@ export default function ResetPasswordPage() {
           ) : (
             /* ─── 이메일 입력 폼 ─── */
             <>
-              {/* 에러 메시지 */}
               {error && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                   {error}
                 </div>
               )}
@@ -127,7 +124,7 @@ export default function ResetPasswordPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@example.com"
-                      className="w-full rounded-lg border border-border-color bg-background py-2.5 pl-10 pr-4 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      className="w-full rounded-lg border border-border-color bg-input-bg py-2.5 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                       autoComplete="email"
                       autoFocus
                     />

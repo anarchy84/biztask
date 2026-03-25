@@ -1,5 +1,5 @@
 // 파일 위치: app/components/FeaturedSlider.tsx
-// 용도: 메인 피드 상단 가로 슬라이딩 배너 (레딧 Trending Today 스타일)
+// 용도: 메인 피드 상단 가로 슬라이딩 배너 (레딧 다크 테마)
 // 기능: 모바일 스와이프 + PC 마우스 휠 + 스크롤 스냅
 
 "use client";
@@ -88,7 +88,7 @@ export default function FeaturedSlider() {
       {/* 섹션 헤더 */}
       <div className="mb-2 flex items-center justify-between">
         <h2 className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-          <Flame className="h-4 w-4 text-red-500" />
+          <Flame className="h-4 w-4 text-red-400" />
           Featured
         </h2>
 
@@ -100,7 +100,7 @@ export default function FeaturedSlider() {
               className={`h-1.5 rounded-full transition-all ${
                 i === activeIndex
                   ? "w-4 bg-primary"
-                  : "w-1.5 bg-gray-300"
+                  : "w-1.5 bg-border-color"
               }`}
             />
           ))}
@@ -113,7 +113,7 @@ export default function FeaturedSlider() {
         {canScrollLeft && (
           <button
             onClick={() => scroll("left")}
-            className="absolute -left-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-white/90 p-1.5 shadow-lg backdrop-blur-sm transition-opacity hover:bg-white lg:group-hover:block"
+            className="absolute -left-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm transition-opacity hover:bg-hover-bg lg:group-hover:block"
             aria-label="이전"
           >
             <ChevronLeft className="h-5 w-5 text-foreground" />
@@ -124,7 +124,7 @@ export default function FeaturedSlider() {
         {canScrollRight && (
           <button
             onClick={() => scroll("right")}
-            className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-white/90 p-1.5 shadow-lg backdrop-blur-sm transition-opacity hover:bg-white lg:group-hover:block"
+            className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 rounded-full bg-card-bg/90 p-1.5 shadow-lg border border-border-color backdrop-blur-sm transition-opacity hover:bg-hover-bg lg:group-hover:block"
             aria-label="다음"
           >
             <ChevronRight className="h-5 w-5 text-foreground" />
@@ -146,7 +146,7 @@ export default function FeaturedSlider() {
             <a
               key={item.id}
               href="#"
-              className="relative shrink-0 overflow-hidden rounded-xl"
+              className="relative shrink-0 overflow-hidden rounded-xl border border-border-color"
               style={{
                 scrollSnapAlign: "start",
                 width: "75%",

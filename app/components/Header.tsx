@@ -1,5 +1,5 @@
 // 파일 위치: app/components/Header.tsx
-// 용도: 상단 네비게이션 바 (로그인 상태에 따라 UI가 바뀌는 클라이언트 컴포넌트)
+// 용도: 레딧 스타일 다크 헤더 - 빛나는 주황 글로우 검색창
 // 비로그인: [로그인] 버튼 표시
 // 로그인: 유저 아바타 + [로그아웃] 버튼 표시
 
@@ -59,11 +59,12 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-border-color">
+    <header className="sticky top-0 z-50 border-b border-border-color bg-header-bg">
       <nav className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4">
         {/* 좌측: 로고 */}
         <div className="flex items-center gap-2">
           <a href="/" className="flex items-center gap-2">
+            {/* 레딧 스타일 주황 로고 아이콘 */}
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white font-bold text-sm">
               B
             </div>
@@ -73,14 +74,14 @@ export default function Header() {
           </a>
         </div>
 
-        {/* 중앙: 검색창 */}
+        {/* 중앙: 빛나는 검색창 (레딧 스타일 주황 글로우) */}
         <div className="flex-1 max-w-xl mx-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <input
-              type="text"
+              type="search"
               placeholder="BizTask 검색..."
-              className="w-full rounded-full border border-border-color bg-background py-1.5 pl-10 pr-4 text-sm placeholder-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              className="search-glow w-full rounded-full border border-border-color bg-input-bg py-1.5 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:outline-none"
             />
           </div>
         </div>
@@ -90,7 +91,7 @@ export default function Header() {
           {/* 글쓰기 버튼 (항상 표시, /submit 페이지로 이동) */}
           <a
             href="/submit"
-            className="flex items-center gap-1.5 rounded-full border border-border-color px-3 py-1.5 text-sm font-medium text-muted hover:bg-gray-100"
+            className="flex items-center gap-1.5 rounded-full border border-border-color px-3 py-1.5 text-sm font-medium text-muted hover:border-foreground hover:text-foreground"
             aria-label="새 글 작성"
           >
             <PenSquare className="h-4 w-4" />
@@ -99,13 +100,13 @@ export default function Header() {
 
           {/* 로딩 중에는 스켈레톤 표시 */}
           {loading ? (
-            <div className="h-8 w-20 animate-pulse rounded-full bg-gray-200" />
+            <div className="h-8 w-20 animate-pulse rounded-full bg-hover-bg" />
           ) : user ? (
             /* ─── 로그인 상태: 알림 + 아바타 + 로그아웃 ─── */
             <>
               {/* 알림 버튼 */}
               <button
-                className="rounded-full p-2 text-muted hover:bg-gray-100"
+                className="rounded-full p-2 text-muted hover:bg-hover-bg hover:text-foreground"
                 aria-label="알림"
               >
                 <Bell className="h-5 w-5" />
@@ -114,7 +115,7 @@ export default function Header() {
               {/* 유저 아바타 (클릭 시 마이페이지로 이동) */}
               <a
                 href="/mypage"
-                className="flex items-center gap-2 rounded-full border border-border-color px-2 py-1 hover:bg-gray-50"
+                className="flex items-center gap-2 rounded-full border border-border-color px-2 py-1 hover:border-foreground"
               >
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white text-xs font-bold">
                   {getUserInitial()}
@@ -127,7 +128,7 @@ export default function Header() {
               {/* 로그아웃 버튼 */}
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted hover:bg-red-50 hover:text-red-600"
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted hover:bg-hover-bg hover:text-red-400"
                 aria-label="로그아웃"
               >
                 <LogOut className="h-4 w-4" />
@@ -138,7 +139,7 @@ export default function Header() {
             /* ─── 비로그인 상태: 알림 + 로그인 버튼 ─── */
             <>
               <button
-                className="rounded-full p-2 text-muted hover:bg-gray-100"
+                className="rounded-full p-2 text-muted hover:bg-hover-bg hover:text-foreground"
                 aria-label="알림"
               >
                 <Bell className="h-5 w-5" />

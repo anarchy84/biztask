@@ -1,5 +1,5 @@
 // 파일 위치: app/submit/page.tsx
-// 용도: 새 글 작성 페이지
+// 용도: 새 글 작성 페이지 (다크 테마)
 // - 비로그인 사용자 → 로그인 페이지로 리다이렉트
 // - 로그인 사용자 → 제목/카테고리/본문 입력 → Supabase posts 테이블에 저장
 
@@ -23,13 +23,13 @@ const CATEGORIES = ["자유", "사업", "마케팅", "커리어"];
 
 export default function SubmitPage() {
   // ─── 상태 관리 ───
-  const [user, setUser] = useState<User | null>(null); // 로그인한 유저
-  const [authLoading, setAuthLoading] = useState(true); // 인증 확인 로딩
-  const [title, setTitle] = useState(""); // 게시글 제목
-  const [content, setContent] = useState(""); // 게시글 본문
-  const [category, setCategory] = useState("자유"); // 선택한 카테고리
-  const [error, setError] = useState(""); // 에러 메시지
-  const [submitting, setSubmitting] = useState(false); // 제출 로딩
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [category, setCategory] = useState("자유");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const router = useRouter();
 
@@ -41,7 +41,6 @@ export default function SubmitPage() {
       } = await supabase.auth.getSession();
 
       if (!session) {
-        // 비로그인 → 로그인 페이지로 강제 이동
         router.replace("/login");
         return;
       }
@@ -58,7 +57,6 @@ export default function SubmitPage() {
     e.preventDefault();
     setError("");
 
-    // 입력값 검증
     if (!title.trim()) {
       setError("제목을 입력해주세요.");
       return;
@@ -80,7 +78,7 @@ export default function SubmitPage() {
     setSubmitting(true);
 
     try {
-      // 1단계: 프로필이 없으면 자동 생성 (회원가입 시 프로필이 안 만들어졌을 수 있음)
+      // 1단계: 프로필이 없으면 자동 생성
       const { data: existingProfile } = await supabase
         .from("profiles")
         .select("id")
@@ -88,7 +86,6 @@ export default function SubmitPage() {
         .single();
 
       if (!existingProfile) {
-        // 프로필이 없으면 새로 생성 (이메일 앞부분을 닉네임으로 사용)
         const nickname = user.email?.split("@")[0] || "익명";
         const { error: profileError } = await supabase
           .from("profiles")
@@ -109,11 +106,8 @@ export default function SubmitPage() {
       });
 
       if (insertError) {
-        // RLS 정책 관련 에러 처리
         if (insertError.message.includes("row-level security")) {
-          setError(
-            "권한 오류: 게시글 작성 권한이 없습니다. 다시 로그인해주세요."
-          );
+          setError("권한 오류: 게시글 작성 권한이 없습니다. 다시 로그인해주세요.");
         } else {
           setError("글 작성에 실패했습니다: " + insertError.message);
         }
@@ -145,7 +139,7 @@ export default function SubmitPage() {
       <div className="mb-6 flex items-center gap-3">
         <button
           onClick={() => router.back()}
-          className="rounded-full p-2 text-muted hover:bg-gray-100"
+          className="rounded-full p-2 text-muted hover:bg-hover-bg hover:text-foreground"
           aria-label="뒤로가기"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -156,11 +150,11 @@ export default function SubmitPage() {
         </div>
       </div>
 
-      {/* 글쓰기 카드 */}
-      <div className="rounded-xl border border-border-color bg-card-bg p-6 shadow-sm">
+      {/* 글쓰기 카드 (다크 테마) */}
+      <div className="rounded-xl border border-border-color bg-card-bg p-6">
         {/* 에러 메시지 */}
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         )}
@@ -206,7 +200,7 @@ export default function SubmitPage() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="제목을 입력하세요"
               maxLength={100}
-              className="w-full rounded-lg border border-border-color bg-background px-4 py-3 text-base placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-3 text-base text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <p className="mt-1 text-right text-xs text-muted">
               {title.length}/100
@@ -228,7 +222,7 @@ export default function SubmitPage() {
               onChange={(e) => setContent(e.target.value)}
               placeholder="자유롭게 이야기를 나눠보세요. 경험, 질문, 인사이트 무엇이든 좋습니다."
               rows={10}
-              className="w-full resize-y rounded-lg border border-border-color bg-background px-4 py-3 text-sm leading-relaxed placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full resize-y rounded-lg border border-border-color bg-input-bg px-4 py-3 text-sm leading-relaxed text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
 
@@ -237,7 +231,7 @@ export default function SubmitPage() {
             <button
               type="button"
               onClick={() => router.back()}
-              className="rounded-lg px-5 py-2.5 text-sm font-medium text-muted hover:bg-gray-100"
+              className="rounded-lg px-5 py-2.5 text-sm font-medium text-muted hover:bg-hover-bg hover:text-foreground"
             >
               취소
             </button>

@@ -1,8 +1,8 @@
 // 파일 위치: app/login/page.tsx
-// 용도: 로그인 / 회원가입 통합 페이지
+// 용도: 로그인 / 회원가입 통합 페이지 (다크 테마)
 // 탭으로 로그인 ↔ 회원가입 전환, Supabase Auth 연동
 
-"use client"; // 브라우저에서 실행되는 클라이언트 컴포넌트
+"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -21,33 +21,30 @@ export default function LoginPage() {
   const [success, setSuccess] = useState(""); // 성공 메시지
   const [loading, setLoading] = useState(false); // 로딩 상태
 
-  const router = useRouter(); // 페이지 이동을 위한 라우터
+  const router = useRouter();
 
   // ─── 폼 제출 핸들러 ───
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); // 기본 폼 제출 동작(페이지 새로고침) 방지
-    setError(""); // 이전 에러 메시지 초기화
-    setSuccess(""); // 이전 성공 메시지 초기화
+    e.preventDefault();
+    setError("");
+    setSuccess("");
 
-    // 입력값 검증
     if (!email || !password) {
       setError("이메일과 비밀번호를 모두 입력해주세요.");
       return;
     }
 
-    // 회원가입 모드일 때 비밀번호 확인 검증
     if (!isLogin && password !== confirmPassword) {
       setError("비밀번호가 일치하지 않습니다.");
       return;
     }
 
-    // 비밀번호 최소 길이 검증
     if (password.length < 6) {
       setError("비밀번호는 최소 6자 이상이어야 합니다.");
       return;
     }
 
-    setLoading(true); // 로딩 시작
+    setLoading(true);
 
     try {
       if (isLogin) {
@@ -58,7 +55,6 @@ export default function LoginPage() {
         });
 
         if (signInError) {
-          // Supabase 에러 메시지를 한글로 변환
           if (signInError.message.includes("Invalid login credentials")) {
             setError("이메일 또는 비밀번호가 올바르지 않습니다.");
           } else if (signInError.message.includes("Email not confirmed")) {
@@ -69,9 +65,8 @@ export default function LoginPage() {
           return;
         }
 
-        // 로그인 성공 → 홈으로 이동
         router.push("/");
-        router.refresh(); // 레이아웃(헤더)도 새로고침하여 로그인 상태 반영
+        router.refresh();
       } else {
         // ─── 회원가입 처리 ───
         const { error: signUpError } = await supabase.auth.signUp({
@@ -80,7 +75,6 @@ export default function LoginPage() {
         });
 
         if (signUpError) {
-          // Supabase 에러 메시지를 한글로 변환
           if (signUpError.message.includes("already registered")) {
             setError("이미 가입된 이메일입니다. 로그인을 시도해주세요.");
           } else if (signUpError.message.includes("valid email")) {
@@ -91,11 +85,7 @@ export default function LoginPage() {
           return;
         }
 
-        // 회원가입 성공 메시지
-        setSuccess(
-          "회원가입이 완료되었습니다! 이메일 인증 링크를 확인해주세요."
-        );
-        // 3초 후 로그인 탭으로 전환
+        setSuccess("회원가입이 완료되었습니다! 이메일 인증 링크를 확인해주세요.");
         setTimeout(() => {
           setIsLogin(true);
           setSuccess("");
@@ -104,22 +94,21 @@ export default function LoginPage() {
     } catch {
       setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
     } finally {
-      setLoading(false); // 로딩 종료
+      setLoading(false);
     }
   };
 
   // ─── 탭 전환 핸들러 ───
   const switchTab = (toLogin: boolean) => {
     setIsLogin(toLogin);
-    setError(""); // 탭 전환 시 에러 초기화
-    setSuccess(""); // 탭 전환 시 성공 메시지 초기화
-    setPassword(""); // 비밀번호 초기화
-    setConfirmPassword(""); // 비밀번호 확인 초기화
+    setError("");
+    setSuccess("");
+    setPassword("");
+    setConfirmPassword("");
   };
 
   return (
-    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center bg-background px-4 py-12">
-      {/* 로그인/회원가입 카드 */}
+    <div className="flex min-h-[calc(100vh-48px)] items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         {/* 상단: 로고 + 환영 메시지 */}
         <div className="mb-8 text-center">
@@ -136,15 +125,15 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* 카드 본체 */}
-        <div className="rounded-xl border border-border-color bg-card-bg p-6 shadow-sm">
+        {/* 카드 본체 (다크 테마) */}
+        <div className="rounded-xl border border-border-color bg-card-bg p-6">
           {/* ─── 탭 전환 버튼 ─── */}
-          <div className="mb-6 flex rounded-lg bg-gray-100 p-1">
+          <div className="mb-6 flex rounded-lg bg-hover-bg p-1">
             <button
               onClick={() => switchTab(true)}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${
                 isLogin
-                  ? "bg-white text-foreground shadow-sm"
+                  ? "bg-card-bg text-foreground shadow-sm"
                   : "text-muted hover:text-foreground"
               }`}
             >
@@ -154,7 +143,7 @@ export default function LoginPage() {
               onClick={() => switchTab(false)}
               className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${
                 !isLogin
-                  ? "bg-white text-foreground shadow-sm"
+                  ? "bg-card-bg text-foreground shadow-sm"
                   : "text-muted hover:text-foreground"
               }`}
             >
@@ -162,16 +151,16 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* ─── 에러 메시지 (빨간색 박스) ─── */}
+          {/* ─── 에러 메시지 ─── */}
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
 
-          {/* ─── 성공 메시지 (초록색 박스) ─── */}
+          {/* ─── 성공 메시지 ─── */}
           {success && (
-            <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
               {success}
             </div>
           )}
@@ -194,7 +183,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full rounded-lg border border-border-color bg-background py-2.5 pl-10 pr-4 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border-color bg-input-bg py-2.5 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   autoComplete="email"
                 />
               </div>
@@ -216,10 +205,9 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="최소 6자 이상"
-                  className="w-full rounded-lg border border-border-color bg-background py-2.5 pl-10 pr-10 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border-color bg-input-bg py-2.5 pl-10 pr-10 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   autoComplete={isLogin ? "current-password" : "new-password"}
                 />
-                {/* 비밀번호 보이기/숨기기 토글 */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -264,7 +252,7 @@ export default function LoginPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="비밀번호를 다시 입력하세요"
-                    className="w-full rounded-lg border border-border-color bg-background py-2.5 pl-10 pr-4 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full rounded-lg border border-border-color bg-input-bg py-2.5 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     autoComplete="new-password"
                   />
                 </div>

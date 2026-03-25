@@ -1,5 +1,5 @@
 // 파일 위치: app/mypage/page.tsx
-// 용도: 마이페이지 - 인스타+쓰레드+레딧 결합 스타일
+// 용도: 마이페이지 - 레딧 다크 테마 적용
 // 구성: 프로필 헤더 / 정보 수정 폼 / 내가 쓴 글·댓글 탭
 
 "use client";
@@ -21,8 +21,6 @@ import {
   Building2,
   Briefcase,
   Heart,
-  Users,
-  UserPlus,
   ArrowBigUp,
   Clock,
 } from "lucide-react";
@@ -55,15 +53,15 @@ type MyPost = {
   created_at: string;
 };
 
-// ─── 카테고리 색상 매핑 ───
+// ─── 카테고리 색상 매핑 (다크 테마) ───
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
-    사업: "bg-orange-100 text-orange-700",
-    마케팅: "bg-purple-100 text-purple-700",
-    커리어: "bg-green-100 text-green-700",
-    자유: "bg-amber-100 text-amber-700",
+    사업: "bg-orange-500/20 text-orange-400",
+    마케팅: "bg-purple-500/20 text-purple-400",
+    커리어: "bg-green-500/20 text-green-400",
+    자유: "bg-amber-500/20 text-amber-400",
   };
-  return colorMap[category] || "bg-gray-100 text-gray-700";
+  return colorMap[category] || "bg-gray-500/20 text-gray-400";
 }
 
 // ─── 날짜 포맷 함수 ───
@@ -83,32 +81,14 @@ function timeAgo(dateString: string): string {
 
 // ─── 관심사 프리셋 목록 ───
 const INTEREST_OPTIONS = [
-  "스타트업",
-  "마케팅",
-  "투자",
-  "개발",
-  "디자인",
-  "AI",
-  "커머스",
-  "콘텐츠",
-  "HR",
-  "재무",
-  "법률",
-  "부동산",
+  "스타트업", "마케팅", "투자", "개발", "디자인", "AI",
+  "커머스", "콘텐츠", "HR", "재무", "법률", "부동산",
 ];
 
 // ─── 업종 프리셋 목록 ───
 const INDUSTRY_OPTIONS = [
-  "IT/소프트웨어",
-  "금융/핀테크",
-  "커머스/유통",
-  "교육/에듀테크",
-  "F&B/외식",
-  "제조업",
-  "미디어/콘텐츠",
-  "헬스케어",
-  "부동산",
-  "기타",
+  "IT/소프트웨어", "금융/핀테크", "커머스/유통", "교육/에듀테크",
+  "F&B/외식", "제조업", "미디어/콘텐츠", "헬스케어", "부동산", "기타",
 ];
 
 export default function MyPage() {
@@ -130,7 +110,7 @@ export default function MyPage() {
   const [editPhone, setEditPhone] = useState("");
   const [editInterests, setEditInterests] = useState<string[]>([]);
 
-  // 탭 상태 (내가 쓴 글 / 내가 단 댓글)
+  // 탭 상태
   const [activeTab, setActiveTab] = useState<"posts" | "comments">("posts");
   const [myPosts, setMyPosts] = useState<MyPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -150,20 +130,15 @@ export default function MyPage() {
       .single();
 
     if (fetchError || !data) {
-      // 프로필이 없으면 기본 프로필 생성
       const defaultNickname =
-        (await supabase.auth.getUser()).data.user?.email?.split("@")[0] ||
-        "익명";
+        (await supabase.auth.getUser()).data.user?.email?.split("@")[0] || "익명";
       const { data: newProfile } = await supabase
         .from("profiles")
         .insert({ id: userId, nickname: defaultNickname })
         .select()
         .single();
-      if (newProfile) {
-        setProfile(newProfile as Profile);
-      }
+      if (newProfile) setProfile(newProfile as Profile);
     } else {
-      // interests가 null이면 빈 배열로 처리
       const profileData = {
         ...data,
         interests: data.interests || [],
@@ -180,13 +155,11 @@ export default function MyPage() {
 
   // ─── 팔로워/팔로잉 숫자 불러오기 ───
   const fetchFollowCounts = useCallback(async (userId: string) => {
-    // 팔로워 수 (나를 팔로우하는 사람)
     const { count: followers } = await supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
       .eq("following_id", userId);
 
-    // 팔로잉 수 (내가 팔로우하는 사람)
     const { count: following } = await supabase
       .from("follows")
       .select("*", { count: "exact", head: true })
@@ -256,7 +229,7 @@ export default function MyPage() {
         ? prev.filter((i) => i !== interest)
         : prev.length < 5
           ? [...prev, interest]
-          : prev // 최대 5개 제한
+          : prev
     );
   };
 
@@ -306,58 +279,51 @@ export default function MyPage() {
     );
   }
 
-  // ─── 이메일 첫 글자 (아바타용) ───
   const avatarInitial = user?.email?.charAt(0).toUpperCase() || "?";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* 프로필 헤더 섹션 (인스타그램 + Threads 스타일)          */}
+      {/* 프로필 헤더 섹션 (다크 테마)                              */}
       {/* ═══════════════════════════════════════════════════════ */}
       <div className="mb-6 rounded-xl border border-border-color bg-card-bg p-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
           {/* 프로필 아바타 */}
           <div className="flex flex-col items-center gap-2">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-blue-400 text-4xl font-bold text-white shadow-lg">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-primary to-orange-400 text-4xl font-bold text-white shadow-lg">
               {avatarInitial}
             </div>
           </div>
 
           {/* 프로필 정보 */}
           <div className="flex-1 min-w-0">
-            {/* 닉네임 + 인증 뱃지 + 수정 버튼 */}
             <div className="mb-2 flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-foreground">
                 {profile?.nickname || "익명"}
               </h1>
 
-              {/* 회사 인증 뱃지 */}
               {profile?.is_company_verified && (
-                <span className="flex items-center gap-0.5 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600" title="회사 인증 완료">
+                <span className="flex items-center gap-0.5 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-medium text-blue-400" title="회사 인증 완료">
                   <BadgeCheck className="h-3.5 w-3.5" />
                   회사인증
                 </span>
               )}
 
-              {/* 사업자 인증 뱃지 */}
               {profile?.is_business_verified && (
-                <span className="flex items-center gap-0.5 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-600" title="사업자 인증 완료">
+                <span className="flex items-center gap-0.5 rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400" title="사업자 인증 완료">
                   <BadgeCheck className="h-3.5 w-3.5" />
                   사업자인증
                 </span>
               )}
 
-              {/* 인증 뱃지 없을 때 안내 */}
-              {!profile?.is_company_verified &&
-                !profile?.is_business_verified && (
-                  <span className="text-xs text-muted">미인증</span>
-                )}
+              {!profile?.is_company_verified && !profile?.is_business_verified && (
+                <span className="text-xs text-muted">미인증</span>
+              )}
 
-              {/* 프로필 수정 버튼 */}
               {!isEditing && (
                 <button
                   onClick={startEditing}
-                  className="ml-auto flex items-center gap-1 rounded-full border border-border-color px-3 py-1 text-sm font-medium text-muted hover:bg-gray-100"
+                  className="ml-auto flex items-center gap-1 rounded-full border border-border-color px-3 py-1 text-sm font-medium text-muted hover:bg-hover-bg hover:text-foreground"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   프로필 수정
@@ -365,21 +331,18 @@ export default function MyPage() {
               )}
             </div>
 
-            {/* 상태 메시지 */}
             {profile?.status_message && (
               <p className="mb-2 text-sm text-muted italic">
                 &quot;{profile.status_message}&quot;
               </p>
             )}
 
-            {/* 바이오 */}
             {profile?.bio && (
               <p className="mb-3 text-sm leading-relaxed text-foreground">
                 {profile.bio}
               </p>
             )}
 
-            {/* 업종 + 회사 */}
             <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted">
               {profile?.industry && (
                 <span className="flex items-center gap-1">
@@ -395,7 +358,6 @@ export default function MyPage() {
               )}
             </div>
 
-            {/* 팔로워 / 팔로잉 / 게시글 수 */}
             <div className="flex gap-5 text-sm">
               <div className="text-center">
                 <span className="font-bold text-foreground">{myPosts.length}</span>
@@ -411,13 +373,12 @@ export default function MyPage() {
               </div>
             </div>
 
-            {/* 관심사 태그 */}
             {profile?.interests && profile.interests.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {profile.interests.map((tag) => (
                   <span
                     key={tag}
-                    className="flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-600"
+                    className="flex items-center gap-1 rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary"
                   >
                     <Heart className="h-3 w-3" />
                     {tag}
@@ -430,24 +391,23 @@ export default function MyPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* 프로필 수정 폼 (인라인, isEditing true일 때만 표시)     */}
+      {/* 프로필 수정 폼 (다크 테마)                               */}
       {/* ═══════════════════════════════════════════════════════ */}
       {isEditing && (
-        <div className="mb-6 rounded-xl border border-primary/30 bg-blue-50/30 p-6">
+        <div className="mb-6 rounded-xl border border-primary/30 bg-primary/5 p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold text-foreground">프로필 수정</h2>
             <button
               onClick={() => setIsEditing(false)}
-              className="rounded-full p-1.5 text-muted hover:bg-gray-200"
+              className="rounded-full p-1.5 text-muted hover:bg-hover-bg hover:text-foreground"
               aria-label="닫기"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          {/* 에러 / 성공 메시지 */}
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -464,7 +424,7 @@ export default function MyPage() {
                 value={editNickname}
                 onChange={(e) => setEditNickname(e.target.value)}
                 maxLength={20}
-                className="w-full rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -480,7 +440,7 @@ export default function MyPage() {
                 onChange={(e) => setEditStatusMessage(e.target.value)}
                 placeholder="현재 상태를 한줄로 표현해보세요"
                 maxLength={50}
-                className="w-full rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -496,7 +456,7 @@ export default function MyPage() {
                 placeholder="간단한 자기소개를 작성해보세요"
                 rows={3}
                 maxLength={200}
-                className="w-full resize-none rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full resize-none rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -510,7 +470,7 @@ export default function MyPage() {
                 <select
                   value={editIndustry}
                   onChange={(e) => setEditIndustry(e.target.value)}
-                  className="w-full rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   <option value="">선택하세요</option>
                   {INDUSTRY_OPTIONS.map((opt) => (
@@ -531,7 +491,7 @@ export default function MyPage() {
                   onChange={(e) => setEditCompany(e.target.value)}
                   placeholder="회사명 (선택)"
                   maxLength={30}
-                  className="w-full rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
             </div>
@@ -547,7 +507,7 @@ export default function MyPage() {
                   type="email"
                   value={user?.email || ""}
                   disabled
-                  className="w-full rounded-lg border border-border-color bg-gray-100 px-4 py-2.5 text-sm text-muted"
+                  className="w-full rounded-lg border border-border-color bg-hover-bg px-4 py-2.5 text-sm text-muted"
                 />
               </div>
               <div>
@@ -561,7 +521,7 @@ export default function MyPage() {
                   onChange={(e) => setEditPhone(e.target.value)}
                   placeholder="010-1234-5678"
                   maxLength={13}
-                  className="w-full rounded-lg border border-border-color bg-white px-4 py-2.5 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
             </div>
@@ -594,7 +554,7 @@ export default function MyPage() {
             <div className="flex justify-end gap-3 border-t border-border-color pt-4">
               <button
                 onClick={() => setIsEditing(false)}
-                className="rounded-lg px-5 py-2.5 text-sm font-medium text-muted hover:bg-gray-100"
+                className="rounded-lg px-5 py-2.5 text-sm font-medium text-muted hover:bg-hover-bg hover:text-foreground"
               >
                 취소
               </button>
@@ -620,15 +580,15 @@ export default function MyPage() {
         </div>
       )}
 
-      {/* 수정 완료 성공 메시지 (수정 폼 바깥에 표시) */}
+      {/* 수정 완료 성공 메시지 */}
       {success && !isEditing && (
-        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+        <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
           {success}
         </div>
       )}
 
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* 하단 탭 섹션: 내가 쓴 글 / 내가 단 댓글 (Reddit 스타일) */}
+      {/* 하단 탭 섹션 (다크 테마)                                 */}
       {/* ═══════════════════════════════════════════════════════ */}
       <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
         {/* 탭 헤더 */}
@@ -638,12 +598,12 @@ export default function MyPage() {
             className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium transition-all ${
               activeTab === "posts"
                 ? "border-b-2 border-primary text-primary"
-                : "text-muted hover:bg-gray-50 hover:text-foreground"
+                : "text-muted hover:bg-hover-bg hover:text-foreground"
             }`}
           >
             <FileText className="h-4 w-4" />
             내가 쓴 글
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+            <span className="rounded-full bg-hover-bg px-2 py-0.5 text-xs">
               {myPosts.length}
             </span>
           </button>
@@ -652,13 +612,12 @@ export default function MyPage() {
             className={`flex flex-1 items-center justify-center gap-2 py-3 text-sm font-medium transition-all ${
               activeTab === "comments"
                 ? "border-b-2 border-primary text-primary"
-                : "text-muted hover:bg-gray-50 hover:text-foreground"
+                : "text-muted hover:bg-hover-bg hover:text-foreground"
             }`}
           >
             <MessageCircle className="h-4 w-4" />
             내가 단 댓글
-            {/* TODO: 댓글 테이블(comments) 생성 후 카운트 연동 */}
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
+            <span className="rounded-full bg-hover-bg px-2 py-0.5 text-xs">
               0
             </span>
           </button>
@@ -666,7 +625,6 @@ export default function MyPage() {
 
         {/* 탭 콘텐츠 */}
         <div className="p-4">
-          {/* ─── 내가 쓴 글 탭 ─── */}
           {activeTab === "posts" && (
             <>
               {postsLoading ? (
@@ -694,7 +652,7 @@ export default function MyPage() {
                   {myPosts.map((post) => (
                     <div
                       key={post.id}
-                      className="rounded-lg border border-border-color p-3 hover:border-gray-400 cursor-pointer transition-colors"
+                      className="rounded-lg border border-border-color p-3 hover:border-muted cursor-pointer transition-colors"
                     >
                       <div className="mb-1 flex items-center gap-2 text-xs">
                         <span
@@ -730,7 +688,6 @@ export default function MyPage() {
             </>
           )}
 
-          {/* ─── 내가 단 댓글 탭 ─── */}
           {activeTab === "comments" && (
             <div className="py-12 text-center">
               <MessageCircle className="mx-auto mb-3 h-10 w-10 text-muted" />
@@ -738,7 +695,6 @@ export default function MyPage() {
                 댓글 기능 준비 중
               </p>
               <p className="text-xs text-muted">
-                {/* TODO: comments 테이블 생성 후 이 영역에 댓글 목록 렌더링 */}
                 다음 업데이트에서 댓글 기능이 추가될 예정입니다.
               </p>
             </div>

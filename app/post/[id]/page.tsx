@@ -1,5 +1,5 @@
 // 파일 위치: app/post/[id]/page.tsx
-// 용도: 게시글 상세 페이지 - 본문 전체 + 댓글 시스템
+// 용도: 게시글 상세 페이지 - 레딧 다크 테마 + 하단 보팅 바
 // URL 예시: /post/abc-123-def
 
 "use client";
@@ -59,12 +59,12 @@ function getAuthorNickname(profiles: ProfileInfo | ProfileInfo[] | null): string
 
 function getCategoryColor(category: string): string {
   const colorMap: Record<string, string> = {
-    사업: "bg-orange-100 text-orange-700",
-    마케팅: "bg-purple-100 text-purple-700",
-    커리어: "bg-green-100 text-green-700",
-    자유: "bg-amber-100 text-amber-700",
+    사업: "bg-orange-500/20 text-orange-400",
+    마케팅: "bg-purple-500/20 text-purple-400",
+    커리어: "bg-green-500/20 text-green-400",
+    자유: "bg-amber-500/20 text-amber-400",
   };
-  return colorMap[category] || "bg-gray-100 text-gray-700";
+  return colorMap[category] || "bg-gray-500/20 text-gray-400";
 }
 
 function timeAgo(dateString: string): string {
@@ -304,7 +304,7 @@ export default function PostDetailPage() {
       <div className="mb-4">
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted hover:bg-gray-100"
+          className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-muted hover:bg-hover-bg hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           돌아가기
@@ -312,88 +312,92 @@ export default function PostDetailPage() {
       </div>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* 게시글 본문 카드                             */}
+      {/* 게시글 본문 카드 (다크 테마)                  */}
       {/* ═══════════════════════════════════════════ */}
       <article className="mb-6 rounded-xl border border-border-color bg-card-bg overflow-hidden">
-        <div className="flex">
-          {/* 좌측: 추천 영역 */}
-          <div className="flex w-12 shrink-0 flex-col items-center gap-1 bg-gray-50 py-4">
-            <button
-              onClick={handleToggleLike}
-              className={`transition-colors ${
-                isLiked ? "text-upvote" : "text-muted hover:text-upvote"
-              }`}
-              aria-label="추천"
-            >
-              <ArrowBigUp
-                className="h-6 w-6"
-                fill={isLiked ? "currentColor" : "none"}
-              />
-            </button>
+        <div className="p-5">
+          {/* 메타 정보 */}
+          <div className="mb-3 flex items-center gap-2 text-xs">
             <span
-              className={`text-sm font-bold ${
-                isLiked ? "text-upvote" : "text-foreground"
-              }`}
+              className={`rounded-full px-2.5 py-0.5 font-semibold ${getCategoryColor(post.category)}`}
             >
-              {post.upvotes}
+              {post.category}
             </span>
-            <button
-              className="text-muted hover:text-blue-500"
-              aria-label="비추천"
-            >
-              <ArrowBigDown className="h-6 w-6" />
-            </button>
+            <span className="text-muted">
+              {getAuthorNickname(post.profiles)}
+            </span>
+            <span className="flex items-center gap-1 text-muted">
+              <Clock className="h-3 w-3" />
+              {timeAgo(post.created_at)}
+            </span>
           </div>
 
-          {/* 우측: 게시글 내용 */}
-          <div className="flex-1 p-5">
-            {/* 메타 정보 */}
-            <div className="mb-3 flex items-center gap-2 text-xs">
-              <span
-                className={`rounded-full px-2.5 py-0.5 font-medium ${getCategoryColor(post.category)}`}
+          {/* 제목 */}
+          <h1 className="mb-4 text-xl font-bold leading-tight text-foreground">
+            {post.title}
+          </h1>
+
+          {/* 본문 (줄바꿈 유지) */}
+          <div className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+            {post.content}
+          </div>
+
+          {/* 하단 인터랙션 바 (레딧 스타일 필 버튼) */}
+          <div className="flex items-center gap-2 border-t border-border-color pt-3">
+            {/* 추천/비추천 그룹 */}
+            <div className="flex items-center rounded-full bg-hover-bg">
+              <button
+                onClick={handleToggleLike}
+                className={`flex items-center rounded-l-full py-1.5 pl-3 pr-1.5 transition-colors ${
+                  isLiked
+                    ? "text-upvote hover:bg-upvote/20"
+                    : "text-muted hover:text-upvote"
+                }`}
+                aria-label="추천"
               >
-                {post.category}
-              </span>
-              <span className="text-muted">
-                {getAuthorNickname(post.profiles)}
-              </span>
-              <span className="flex items-center gap-1 text-muted">
-                <Clock className="h-3 w-3" />
-                {timeAgo(post.created_at)}
-              </span>
-            </div>
-
-            {/* 제목 */}
-            <h1 className="mb-4 text-xl font-bold leading-tight text-foreground">
-              {post.title}
-            </h1>
-
-            {/* 본문 (줄바꿈 유지) */}
-            <div className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-              {post.content}
-            </div>
-
-            {/* 하단 액션 바 */}
-            <div className="flex items-center gap-3 border-t border-border-color pt-3">
-              <span className="flex items-center gap-1 text-xs font-medium text-muted">
-                <MessageCircle className="h-4 w-4" />
-                {post.comment_count}개 댓글
-              </span>
-              <button className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100">
-                <Share2 className="h-4 w-4" />
-                공유
+                <ArrowBigUp
+                  className="h-5 w-5"
+                  fill={isLiked ? "currentColor" : "none"}
+                />
               </button>
-              <button className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100">
-                <Bookmark className="h-4 w-4" />
-                저장
+              <span
+                className={`px-1 text-xs font-bold ${
+                  isLiked ? "text-upvote" : "text-foreground"
+                }`}
+              >
+                {post.upvotes}
+              </span>
+              <button
+                className="flex items-center rounded-r-full py-1.5 pl-1.5 pr-3 text-muted transition-colors hover:text-downvote"
+                aria-label="비추천"
+              >
+                <ArrowBigDown className="h-5 w-5" />
               </button>
             </div>
+
+            {/* 댓글 수 */}
+            <span className="interaction-pill">
+              <MessageCircle className="h-4 w-4" />
+              {post.comment_count}
+            </span>
+
+            {/* 공유 */}
+            <button className="interaction-pill">
+              <Share2 className="h-4 w-4" />
+              <span className="hidden sm:inline">공유</span>
+            </button>
+
+            {/* 저장 */}
+            <button className="interaction-pill">
+              <Bookmark className="h-4 w-4" />
+              <span className="hidden sm:inline">저장</span>
+            </button>
           </div>
         </div>
       </article>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* 댓글 섹션                                    */}
+      {/* 댓글 섹션 (다크 테마)                        */}
       {/* ═══════════════════════════════════════════ */}
       <div className="rounded-xl border border-border-color bg-card-bg p-5">
         <h2 className="mb-4 text-base font-bold text-foreground">
@@ -404,7 +408,7 @@ export default function PostDetailPage() {
         {user ? (
           <form onSubmit={handleSubmitComment} className="mb-6">
             {commentError && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+              <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400">
                 {commentError}
               </div>
             )}
@@ -420,7 +424,7 @@ export default function PostDetailPage() {
                   onChange={(e) => setCommentText(e.target.value)}
                   placeholder="댓글을 입력하세요..."
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-border-color bg-background px-4 py-2.5 text-sm placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="w-full resize-none rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
                 <div className="mt-2 flex justify-end">
                   <button
@@ -440,7 +444,7 @@ export default function PostDetailPage() {
             </div>
           </form>
         ) : (
-          <div className="mb-6 rounded-lg border border-border-color bg-gray-50 p-4 text-center">
+          <div className="mb-6 rounded-lg border border-border-color bg-hover-bg p-4 text-center">
             <p className="mb-2 text-sm text-muted">
               댓글을 작성하려면 로그인이 필요합니다
             </p>
@@ -466,10 +470,10 @@ export default function PostDetailPage() {
             {comments.map((comment) => (
               <div
                 key={comment.id}
-                className="group flex gap-3 rounded-lg p-2 hover:bg-gray-50"
+                className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg"
               >
                 {/* 댓글 작성자 아바타 */}
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-300 text-white text-xs font-bold">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
                   {getAuthorNickname(comment.profiles).charAt(0)}
                 </div>
 
@@ -488,7 +492,7 @@ export default function PostDetailPage() {
                     {user && user.id === comment.user_id && (
                       <button
                         onClick={() => handleDeleteComment(comment.id)}
-                        className="ml-auto flex items-center gap-1 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-500"
+                        className="ml-auto flex items-center gap-1 text-xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400"
                         aria-label="댓글 삭제"
                       >
                         <Trash2 className="h-3 w-3" />

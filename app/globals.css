@@ -1,18 +1,23 @@
 /* 파일 위치: app/globals.css */
-/* 용도: 전역 스타일 - Tailwind v4 + 커스텀 UI 개선 */
+/* 용도: 전역 스타일 - Tailwind v4 + 레딧 다크 테마 */
 
 @import "tailwindcss";
 
-/* ─── Tailwind 테마 커스텀 (색상 변수) ─── */
+/* ─── 레딧 다크 테마 색상 변수 ─── */
 :root {
-  --background: #f6f7f8;
-  --foreground: #1a1a1b;
-  --card-bg: #ffffff;
-  --border-color: #e0e0e0;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
+  --background: #030303;
+  --foreground: #d7dadc;
+  --card-bg: #1a1a1b;
+  --border-color: #343536;
+  --primary: #ff4500;
+  --primary-hover: #e03d00;
   --upvote: #ff4500;
-  --muted: #7c7c7c;
+  --downvote: #7193ff;
+  --muted: #818384;
+  --hover-bg: #272729;
+  --input-bg: #272729;
+  --header-bg: #1a1a1b;
+  --sidebar-hover: #2a2a2b;
 }
 
 @theme inline {
@@ -23,19 +28,24 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-upvote: var(--upvote);
+  --color-downvote: var(--downvote);
   --color-muted: var(--muted);
+  --color-hover-bg: var(--hover-bg);
+  --color-input-bg: var(--input-bg);
+  --color-header-bg: var(--header-bg);
+  --color-sidebar-hover: var(--sidebar-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-/* ─── 기본 body 스타일 ─── */
+/* ─── 기본 body 스타일 (다크 배경) ─── */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans, Arial, Helvetica, sans-serif);
 }
 
-/* ─── 커스텀 스크롤바 (Webkit 기반 브라우저: Chrome, Edge, Safari) ─── */
+/* ─── 커스텀 스크롤바 (다크 테마용) ─── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -46,30 +56,58 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #3a3a3c;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: #555557;
 }
 
 /* Firefox 스크롤바 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #c1c1c1 transparent;
+  scrollbar-color: #3a3a3c transparent;
 }
 
-/* ─── 카드 호버 효과 (게시글 카드에 적용) ─── */
+/* ─── 카드 호버 효과 (다크 테마) ─── */
 .post-card {
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .post-card:hover {
-  border-color: #898989;
+  border-color: #555557;
+  background-color: #222223;
 }
 
 /* ─── 버튼 공통 트랜지션 ─── */
 button, a {
   transition: all 0.15s ease;
+}
+
+/* ─── 검색창 글로우 효과 ─── */
+.search-glow:focus {
+  border-color: #ff4500;
+  box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.2), 0 0 8px rgba(255, 69, 0, 0.15);
+}
+
+/* ─── 인터랙션 필 버튼 (레딧 하단 바) ─── */
+.interaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9999px;
+  background-color: #272729;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #818384;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.interaction-pill:hover {
+  background-color: #3a3a3c;
+  color: #d7dadc;
 }

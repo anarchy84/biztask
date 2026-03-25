@@ -1,7 +1,7 @@
 // 파일 위치: app/page.tsx
-// 용도: 메인 홈 화면 - 레딧 스타일 3단 레이아웃
+// 용도: 메인 홈 화면 - 레딧 다크 테마 3단 레이아웃
 // 기능: 카테고리 필터링 (?category=사업) + 정렬 (?sort=popular|latest|rising)
-//       추천 토글 + 게시글 클릭 시 상세 페이지 이동
+//       추천 토글 + PostCard 컴포넌트 사용
 
 "use client";
 
@@ -10,12 +10,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import FeaturedSlider from "@/app/components/FeaturedSlider";
+import PostCard from "@/app/components/PostCard";
 import {
-  ArrowBigUp,
-  ArrowBigDown,
-  MessageCircle,
-  Share2,
-  Bookmark,
   Flame,
   TrendingUp,
   Briefcase,
@@ -63,45 +59,20 @@ function getAuthorNickname(profiles: PostWithAuthor["profiles"]): string {
   return profiles.nickname || "익명";
 }
 
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const past = new Date(dateString);
-  const diffMs = now.getTime() - past.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHour = Math.floor(diffMs / 3600000);
-  const diffDay = Math.floor(diffMs / 86400000);
-  if (diffMin < 1) return "방금 전";
-  if (diffMin < 60) return `${diffMin}분 전`;
-  if (diffHour < 24) return `${diffHour}시간 전`;
-  if (diffDay < 30) return `${diffDay}일 전`;
-  return `${Math.floor(diffDay / 30)}개월 전`;
-}
-
-function getCategoryColor(category: string): string {
-  const colorMap: Record<string, string> = {
-    사업: "bg-orange-100 text-orange-700",
-    마케팅: "bg-purple-100 text-purple-700",
-    커리어: "bg-green-100 text-green-700",
-    자유: "bg-amber-100 text-amber-700",
-  };
-  return colorMap[category] || "bg-gray-100 text-gray-700";
-}
-
 // ─── 좌측 메뉴 카테고리 정의 ───
-// href에 ?category= 파라미터를 사용하여 필터링
 const SIDEBAR_CATEGORIES = [
-  { name: "전체", icon: LayoutGrid, color: "text-blue-500", href: "/" },
-  { name: "사업", icon: Briefcase, color: "text-orange-500", href: "/?category=사업" },
-  { name: "마케팅", icon: Megaphone, color: "text-purple-500", href: "/?category=마케팅" },
-  { name: "커리어", icon: GraduationCap, color: "text-green-500", href: "/?category=커리어" },
-  { name: "자유", icon: Coffee, color: "text-amber-500", href: "/?category=자유" },
+  { name: "전체", icon: LayoutGrid, color: "text-blue-400", href: "/" },
+  { name: "사업", icon: Briefcase, color: "text-orange-400", href: "/?category=사업" },
+  { name: "마케팅", icon: Megaphone, color: "text-purple-400", href: "/?category=마케팅" },
+  { name: "커리어", icon: GraduationCap, color: "text-green-400", href: "/?category=커리어" },
+  { name: "자유", icon: Coffee, color: "text-amber-400", href: "/?category=자유" },
 ];
 
 // ─── 상단 정렬 탭 정의 ───
 const SORT_TABS = [
-  { key: "popular", label: "인기", icon: Flame, iconColor: "text-red-500" },
-  { key: "latest", label: "최신", icon: Clock, iconColor: "text-blue-500" },
-  { key: "rising", label: "급상승", icon: TrendingUp, iconColor: "text-green-500" },
+  { key: "popular", label: "인기", icon: Flame, iconColor: "text-red-400" },
+  { key: "latest", label: "최신", icon: Clock, iconColor: "text-blue-400" },
+  { key: "rising", label: "급상승", icon: TrendingUp, iconColor: "text-green-400" },
 ];
 
 // ═══════════════════════════════════════════════════════
@@ -275,6 +246,13 @@ export default function Home() {
     }
   };
 
+  // ─── 카테고리 클릭 핸들러 (PostCard에서 사용) ───
+  const handleCategoryClick = (e: React.MouseEvent, category: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(buildCategoryUrl(category));
+  };
+
   // ─── 로딩 화면 ───
   if (loading) {
     return (
@@ -308,8 +286,8 @@ export default function Home() {
                   href={cat.name === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat.name)}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     isActive
-                      ? "bg-primary/10 text-primary font-semibold"
-                      : "text-foreground hover:bg-gray-100"
+                      ? "bg-primary/15 text-primary font-semibold"
+                      : "text-foreground hover:bg-hover-bg"
                   }`}
                 >
                   <cat.icon
@@ -329,9 +307,9 @@ export default function Home() {
 
             <a
               href="#"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-gray-100"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover-bg"
             >
-              <Award className="h-5 w-5 text-yellow-500" />
+              <Award className="h-5 w-5 text-yellow-400" />
               <span>명예의 전당</span>
             </a>
           </div>
@@ -345,7 +323,7 @@ export default function Home() {
           <FeaturedSlider />
 
           {/* 피드 상단: 정렬 탭 + 현재 카테고리 표시 */}
-          <div className="flex items-center gap-2 rounded-lg border border-border-color bg-card-bg p-2">
+          <div className="flex items-center gap-2 rounded-xl border border-border-color bg-card-bg p-2">
             {SORT_TABS.map((tab) => {
               const isActive = currentSort === tab.key;
 
@@ -355,8 +333,8 @@ export default function Home() {
                   href={buildSortUrl(tab.key)}
                   className={`flex items-center gap-1 rounded-full px-3 py-1 text-sm font-medium transition-colors ${
                     isActive
-                      ? "bg-gray-100 text-foreground"
-                      : "text-muted hover:bg-gray-50 hover:text-foreground"
+                      ? "bg-hover-bg text-foreground"
+                      : "text-muted hover:bg-hover-bg hover:text-foreground"
                   }`}
                 >
                   <tab.icon
@@ -370,14 +348,12 @@ export default function Home() {
             {/* 현재 선택된 카테고리 뱃지 (카테고리 필터 활성 시) */}
             {currentCategory && (
               <div className="ml-auto flex items-center gap-1.5">
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${getCategoryColor(currentCategory)}`}
-                >
+                <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
                   {currentCategory}
                 </span>
                 <Link
                   href={buildCategoryUrl("")}
-                  className="rounded-full p-0.5 text-muted hover:bg-gray-100 hover:text-foreground"
+                  className="rounded-full p-0.5 text-muted hover:bg-hover-bg hover:text-foreground"
                   aria-label="필터 해제"
                 >
                   ✕
@@ -411,7 +387,7 @@ export default function Home() {
 
           {/* 게시글이 없을 때 */}
           {posts.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-border-color bg-card-bg py-16 text-center">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border-color bg-card-bg py-16 text-center">
               <Inbox className="mb-4 h-12 w-12 text-muted" />
               <h3 className="mb-1 text-lg font-semibold text-foreground">
                 {currentCategory
@@ -427,7 +403,7 @@ export default function Home() {
                 {currentCategory && (
                   <Link
                     href="/"
-                    className="rounded-full border border-border-color px-5 py-2 text-sm font-medium text-muted hover:bg-gray-100"
+                    className="rounded-full border border-border-color px-5 py-2 text-sm font-medium text-muted hover:bg-hover-bg"
                   >
                     전체 보기
                   </Link>
@@ -442,109 +418,30 @@ export default function Home() {
             </div>
           )}
 
-          {/* 게시글 카드 목록 */}
-          {posts.map((post) => {
-            const isLiked = likedPostIds.has(post.id);
-
-            return (
-              <Link
-                key={post.id}
-                href={`/post/${post.id}`}
-                className="post-card flex rounded-lg border border-border-color bg-card-bg overflow-hidden cursor-pointer block"
-              >
-                {/* 좌측: 추천 투표 */}
-                <div className="flex w-10 shrink-0 flex-col items-center gap-1 bg-gray-50 py-2">
-                  <button
-                    onClick={(e) => handleToggleLike(e, post.id)}
-                    className={`transition-colors ${
-                      isLiked
-                        ? "text-upvote"
-                        : "text-muted hover:text-upvote"
-                    }`}
-                    aria-label="추천"
-                  >
-                    <ArrowBigUp
-                      className="h-5 w-5"
-                      fill={isLiked ? "currentColor" : "none"}
-                    />
-                  </button>
-                  <span
-                    className={`text-xs font-bold ${
-                      isLiked ? "text-upvote" : "text-foreground"
-                    }`}
-                  >
-                    {post.upvotes}
-                  </span>
-                  <button
-                    className="text-muted hover:text-blue-500"
-                    aria-label="비추천"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                  >
-                    <ArrowBigDown className="h-5 w-5" />
-                  </button>
-                </div>
-
-                {/* 우측: 내용 */}
-                <div className="flex-1 p-3">
-                  <div className="mb-1 flex items-center gap-2 text-xs">
-                    {/* 카테고리 뱃지 (클릭 시 해당 카테고리로 필터) */}
-                    <span
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        router.push(buildCategoryUrl(post.category));
-                      }}
-                      className={`cursor-pointer rounded-full px-2 py-0.5 font-medium hover:opacity-80 ${getCategoryColor(post.category)}`}
-                    >
-                      {post.category}
-                    </span>
-                    <span className="text-muted">
-                      {getAuthorNickname(post.profiles)} ·{" "}
-                      {timeAgo(post.created_at)}
-                    </span>
-                  </div>
-
-                  <h3 className="mb-1 text-base font-semibold leading-snug text-foreground">
-                    {post.title}
-                  </h3>
-
-                  <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-muted">
-                    {post.content}
-                  </p>
-
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted">
-                      <MessageCircle className="h-4 w-4" />
-                      {post.comment_count}개 댓글
-                    </span>
-                    <button
-                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <Share2 className="h-4 w-4" />
-                      공유
-                    </button>
-                    <button
-                      className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted hover:bg-gray-100"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <Bookmark className="h-4 w-4" />
-                      저장
-                    </button>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          {/* ═══════════════════════════════════════════ */}
+          {/* 게시글 카드 목록 (PostCard 컴포넌트 사용)    */}
+          {/* ═══════════════════════════════════════════ */}
+          {posts.map((post) => (
+            <Link
+              key={post.id}
+              href={`/post/${post.id}`}
+              className="block"
+            >
+              <PostCard
+                id={post.id}
+                title={post.title}
+                content={post.content}
+                category={post.category}
+                upvotes={post.upvotes}
+                commentCount={post.comment_count}
+                createdAt={post.created_at}
+                authorNickname={getAuthorNickname(post.profiles)}
+                isLiked={likedPostIds.has(post.id)}
+                onToggleLike={handleToggleLike}
+                onCategoryClick={handleCategoryClick}
+              />
+            </Link>
+          ))}
         </section>
 
         {/* ═══════════════════════════════════════════ */}
@@ -553,7 +450,7 @@ export default function Home() {
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-4">
             {/* 트렌딩 */}
-            <div className="rounded-lg border border-border-color bg-card-bg overflow-hidden">
+            <div className="rounded-xl border border-border-color bg-card-bg overflow-hidden">
               <div className="bg-primary px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-bold text-white">
                   <TrendingUp className="h-4 w-4" />
@@ -566,7 +463,7 @@ export default function Home() {
                     <Link
                       key={item.id}
                       href={`/post/${item.id}`}
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50"
+                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-hover-bg"
                     >
                       <span className="text-lg font-bold text-primary">
                         {index + 1}
@@ -591,7 +488,7 @@ export default function Home() {
             </div>
 
             {/* 커뮤니티 소개 */}
-            <div className="rounded-lg border border-border-color bg-card-bg p-4">
+            <div className="rounded-xl border border-border-color bg-card-bg p-4">
               <h3 className="mb-2 text-sm font-bold text-foreground">
                 BizTask 커뮤니티
               </h3>
@@ -605,7 +502,7 @@ export default function Home() {
                   <p className="text-xs text-muted">멤버</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-green-500">48</p>
+                  <p className="text-lg font-bold text-green-400">48</p>
                   <p className="text-xs text-muted">온라인</p>
                 </div>
               </div>
