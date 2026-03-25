@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
@@ -76,9 +76,26 @@ const SORT_TABS = [
 ];
 
 // ═══════════════════════════════════════════════════════
-// 메인 페이지 컴포넌트
+// Suspense 래퍼 (useSearchParams는 Suspense 바운더리 필요)
 // ═══════════════════════════════════════════════════════
-export default function Home() {
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <Home />
+    </Suspense>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 메인 페이지 컴포넌트 (내부)
+// ═══════════════════════════════════════════════════════
+function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
