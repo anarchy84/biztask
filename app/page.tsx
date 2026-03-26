@@ -24,6 +24,8 @@ import {
   Clock,
   Inbox,
   Loader2,
+  Plus,
+  X,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -119,6 +121,14 @@ function Home() {
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [isVip, setIsVip] = useState(false); // VIP 크리에이터 여부
 
+  // ─── 카테고리(커뮤니티) 동적 로딩 + 생성 모달 관련 상태 ───
+  type Community = { id: string; name: string };
+  const [communities, setCommunities] = useState<Community[]>([]); // DB에서 불러온 커뮤니티(카테고리) 목록
+  const [showCreateModal, setShowCreateModal] = useState(false);   // 카테고리 생성 모달 표시 여부
+  const [newCatName, setNewCatName] = useState("");               // 새 카테고리 이름 입력값
+  const [newCatDesc, setNewCatDesc] = useState("");               // 새 카테고리 설명 입력값
+  const [creating, setCreating] = useState(false);                // 생성 중 로딩 상태
+
   // ─── 게시글 목록 불러오기 ───
   const fetchPosts = useCallback(
     async (category: string, sort: string) => {
@@ -175,6 +185,38 @@ function Home() {
     }
   }, []);
 
+  // ─── 커뮤니티(카테고리) 목록 불러오기 ───
+  const fetchCommunities = useCallback(async () => {
+    const { data } = await supabase
+      .from("communities")
+      .select("id, name")
+      .order("name", { ascending: true });
+    if (data) setCommunities(data as Community[]);
+  }, []);
+
+  // ─── VIP 전용: 새 카테고리(커뮤니티) 생성 ───
+  const handleCreateCategory = async () => {
+    if (!newCatName.trim() || !user) return;
+    setCreating(true);
+
+    const { error } = await supabase.from("communities").insert({
+      name: newCatName.trim(),
+      description: newCatDesc.trim() || null,
+      created_by: user.id,
+    });
+
+    if (error) {
+      alert("카테고리 생성 실패: " + error.message);
+    } else {
+      // 생성 성공 → 목록 새로고침 + 모달 닫기
+      await fetchCommunities();
+      setNewCatName("");
+      setNewCatDesc("");
+      setShowCreateModal(false);
+    }
+    setCreating(false);
+  };
+
   // ─── 초기 + URL 변경 시 데이터 로드 ───
   useEffect(() => {
     const init = async () => {
@@ -202,12 +244,13 @@ function Home() {
       await Promise.all([
         fetchPosts(currentCategory, currentSort),
         fetchTrending(),
+        fetchCommunities(),
       ]);
       setLoading(false);
     };
 
     init();
-  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes]);
+  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes, fetchCommunities]);
 
   // ─── URL 파라미터 조합 헬퍼 ───
   function buildCategoryUrl(category: string): string {
@@ -327,10 +370,25 @@ function Home() {
 
             <div className="my-3 border-t border-border-color" />
 
-            {/* 카테고리 서브 메뉴 (접힌 형태, 토글 가능하게 추후 확장 가능) */}
-            <h3 className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-              카테고리
-            </h3>
+            {/* 카테고리 서브 메뉴 + VIP 전용 카테고리 추가 버튼 */}
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                카테고리
+              </h3>
+              {/* VIP 유저에게만 '+' 버튼 표시 → 카테고리 생성 모달 열기 */}
+              {isVip && (
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex h-5 w-5 items-center justify-center rounded-md text-muted transition-colors hover:bg-primary/20 hover:text-primary"
+                  aria-label="카테고리 추가"
+                  title="새 카테고리 만들기 (VIP 전용)"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 기본 카테고리 4종 */}
             {["사업", "마케팅", "커리어", "자유"].map((cat) => {
               const isActive = currentCategory === cat;
               return (
@@ -354,6 +412,30 @@ function Home() {
                 </Link>
               );
             })}
+
+            {/* DB에서 불러온 커뮤니티(사용자 생성 카테고리) 목록 */}
+            {/* 기본 4종("사업","마케팅","커리어","자유")과 겹치지 않는 것만 표시 */}
+            {communities
+              .filter((c) => !["사업", "마케팅", "커리어", "자유"].includes(c.name))
+              .map((c) => {
+                const isActive = currentCategory === c.name;
+                return (
+                  <Link
+                    key={c.id}
+                    href={buildCategoryUrl(c.name)}
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                      isActive
+                        ? "bg-primary/15 text-primary font-semibold"
+                        : "text-muted hover:bg-hover-bg hover:text-foreground"
+                    }`}
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${
+                      isActive ? "bg-primary" : "bg-gray-400"
+                    }`} />
+                    <span>{c.name}</span>
+                  </Link>
+                );
+              })}
 
             {/* ─── VIP 크리에이터 라운지 (isVip === true일 때만 렌더링) ─── */}
             {isVip && (
@@ -434,6 +516,12 @@ function Home() {
               <option value="마케팅">마케팅</option>
               <option value="커리어">커리어</option>
               <option value="자유">자유</option>
+              {/* DB에서 불러온 사용자 생성 카테고리 (기본 4종 제외) */}
+              {communities
+                .filter((c) => !["사업", "마케팅", "커리어", "자유"].includes(c.name))
+                .map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
               {isVip && <option value="VIP 전용">💎 VIP 전용</option>}
             </select>
           </div>
@@ -568,6 +656,95 @@ function Home() {
         </aside>
 
       </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* VIP 전용: 카테고리 생성 모달                   */}
+      {/* 사이드바 '+' 버튼 클릭 시 열림                 */}
+      {/* ═══════════════════════════════════════════ */}
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowCreateModal(false)} // 배경 클릭 시 닫기
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl border border-border-color bg-card-bg p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()} // 모달 내부 클릭은 전파 차단
+          >
+            {/* 닫기 버튼 */}
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className="absolute top-4 right-4 rounded-full p-1 text-muted hover:bg-hover-bg hover:text-foreground transition-colors"
+              aria-label="모달 닫기"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* 모달 헤더 */}
+            <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+              <Plus className="h-5 w-5 text-primary" />
+              새 카테고리 만들기
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              💎 VIP 크리에이터 전용 기능입니다. 새로운 카테고리를 만들어 커뮤니티를 키워보세요!
+            </p>
+
+            {/* 카테고리 이름 입력 */}
+            <div className="mt-5">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                카테고리 이름 <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="예: 스타트업, 투자, AI 등..."
+                maxLength={20}
+                className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="mt-1 text-right text-[11px] text-muted">{newCatName.length}/20</p>
+            </div>
+
+            {/* 카테고리 설명 입력 (선택) */}
+            <div className="mt-3">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                설명 <span className="text-muted">(선택)</span>
+              </label>
+              <textarea
+                value={newCatDesc}
+                onChange={(e) => setNewCatDesc(e.target.value)}
+                placeholder="이 카테고리에 대한 짧은 설명..."
+                maxLength={100}
+                rows={2}
+                className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+              />
+            </div>
+
+            {/* 액션 버튼 */}
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="flex-1 rounded-lg border border-border-color px-4 py-2.5 text-sm font-medium text-muted hover:bg-hover-bg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleCreateCategory}
+                disabled={!newCatName.trim() || creating}
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {creating ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    생성 중...
+                  </span>
+                ) : (
+                  "카테고리 만들기"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
