@@ -133,7 +133,7 @@ export default function Header() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="BizTask 검색..."
-              className="search-glow w-full rounded-full border border-border-color bg-input-bg py-2 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:outline-none"
+              className="w-full rounded-full py-2 pl-10 pr-4 text-sm text-foreground placeholder-muted focus:outline-none bg-input-bg border border-[#73e346] ring-1 ring-[#73e346] shadow-[0_0_15px_rgba(115,227,70,0.4)] md:border-gray-700 md:ring-0 md:shadow-none md:focus:border-[#73e346] md:focus:ring-1 md:focus:ring-[#73e346] md:focus:shadow-[0_0_15px_rgba(115,227,70,0.4)] transition-all"
             />
           </form>
         </div>

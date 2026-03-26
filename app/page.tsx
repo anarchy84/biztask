@@ -17,15 +17,13 @@ import TrendingSidebar from "@/app/components/TrendingSidebar";
 import {
   Flame,
   TrendingUp,
-  Briefcase,
-  Megaphone,
-  GraduationCap,
-  Coffee,
-  Award,
+  Home as HomeIcon,
+  BookOpen,
+  Newspaper,
+  Compass,
   Clock,
   Inbox,
   Loader2,
-  LayoutGrid,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -71,13 +69,13 @@ function getAuthorAvatarUrl(profiles: PostWithAuthor["profiles"]): string | null
   return profiles.avatar_url || null;
 }
 
-// ─── 좌측 메뉴 카테고리 ───
-const SIDEBAR_CATEGORIES = [
-  { name: "전체", icon: LayoutGrid, color: "text-blue-400", href: "/" },
-  { name: "사업", icon: Briefcase, color: "text-primary-light", href: "/?category=사업" },
-  { name: "마케팅", icon: Megaphone, color: "text-purple-400", href: "/?category=마케팅" },
-  { name: "커리어", icon: GraduationCap, color: "text-cyan-400", href: "/?category=커리어" },
-  { name: "자유", icon: Coffee, color: "text-amber-400", href: "/?category=자유" },
+// ─── 좌측 메뉴: 레딧 스타일 5대 메인 네비게이션 ───
+const SIDEBAR_NAV = [
+  { name: "홈", icon: HomeIcon, color: "text-primary-light", path: "/" },
+  { name: "인기", icon: Flame, color: "text-red-400", path: "/popular" },
+  { name: "칼럼", icon: BookOpen, color: "text-purple-400", path: "/columns" },
+  { name: "뉴스", icon: Newspaper, color: "text-cyan-400", path: "/news" },
+  { name: "둘러보기", icon: Compass, color: "text-amber-400", path: "/communities" },
 ];
 
 // ─── 상단 정렬 탭 ───
@@ -286,49 +284,64 @@ function Home() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[200px_minmax(0,1fr)_280px] lg:gap-6 xl:grid-cols-[220px_minmax(0,1fr)_300px] xl:gap-7">
 
         {/* ═══════════════════════════════════════════ */}
-        {/* 좌측 사이드바: 카테고리 필터                  */}
+        {/* 좌측 사이드바: 레딧 스타일 5대 메인 네비게이션   */}
         {/* ═══════════════════════════════════════════ */}
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-1">
-            <h2 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              카테고리
-            </h2>
-
-            {SIDEBAR_CATEGORIES.map((cat) => {
+            {SIDEBAR_NAV.map((item) => {
+              // 현재 경로와 비교하여 활성 상태 판단
+              // "홈"은 카테고리 없는 루트("/")일 때 활성
               const isActive =
-                (cat.name === "전체" && !currentCategory) ||
-                cat.name === currentCategory;
+                (item.path === "/" && !currentCategory && currentSort === "popular") ||
+                (item.path === "/popular" && currentSort === "popular" && !currentCategory);
 
               return (
                 <Link
-                  key={cat.name}
-                  href={cat.name === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat.name)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  key={item.name}
+                  href={item.path}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-primary/15 text-primary font-semibold"
                       : "text-foreground hover:bg-hover-bg"
                   }`}
                 >
-                  <cat.icon
-                    className={`h-5 w-5 shrink-0 ${isActive ? "text-primary" : cat.color}`}
+                  <item.icon
+                    className={`h-5 w-5 shrink-0 ${isActive ? "text-primary" : item.color}`}
                   />
-                  <span>{cat.name}</span>
-                  {isActive && (
-                    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
-                  )}
+                  <span>{item.name}</span>
                 </Link>
               );
             })}
 
             <div className="my-3 border-t border-border-color" />
 
-            <a
-              href="#"
-              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover-bg"
-            >
-              <Award className="h-5 w-5 shrink-0 text-yellow-400" />
-              <span>명예의 전당</span>
-            </a>
+            {/* 카테고리 서브 메뉴 (접힌 형태, 토글 가능하게 추후 확장 가능) */}
+            <h3 className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              카테고리
+            </h3>
+            {["사업", "마케팅", "커리어", "자유"].map((cat) => {
+              const isActive = currentCategory === cat;
+              return (
+                <Link
+                  key={cat}
+                  href={buildCategoryUrl(cat)}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive
+                      ? "bg-primary/15 text-primary font-semibold"
+                      : "text-muted hover:bg-hover-bg hover:text-foreground"
+                  }`}
+                >
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${
+                    isActive ? "bg-primary" :
+                    cat === "사업" ? "bg-green-400" :
+                    cat === "마케팅" ? "bg-purple-400" :
+                    cat === "커리어" ? "bg-cyan-400" :
+                    "bg-amber-400"
+                  }`} />
+                  <span>{cat}</span>
+                </Link>
+              );
+            })}
           </div>
         </aside>
 
@@ -379,22 +392,22 @@ function Home() {
 
           {/* 모바일 전용: 카테고리 가로 스크롤 */}
           <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            {SIDEBAR_CATEGORIES.map((cat) => {
+            {["전체", "사업", "마케팅", "커리어", "자유"].map((cat) => {
               const isActive =
-                (cat.name === "전체" && !currentCategory) ||
-                cat.name === currentCategory;
+                (cat === "전체" && !currentCategory) ||
+                cat === currentCategory;
 
               return (
                 <Link
-                  key={cat.name}
-                  href={cat.name === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat.name)}
+                  key={cat}
+                  href={cat === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat)}
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                     isActive
                       ? "bg-primary text-black"
                       : "border border-border-color text-muted hover:border-primary hover:text-primary"
                   }`}
                 >
-                  {cat.name}
+                  {cat}
                 </Link>
               );
             })}

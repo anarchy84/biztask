@@ -2,14 +2,16 @@
 // 용도: 새 글 작성 페이지 (다크 테마)
 // 기능:
 //   - 비로그인 사용자 → 로그인 페이지로 리다이렉트
-//   - 로그인 사용자 → 제목/카테고리/본문/미디어 첨부 → Supabase posts 테이블에 저장
+//   - VIP(verified_creators) 인증 여부 조회 → 커뮤니티 생성 권한 분기
+//   - communities 테이블에서 커뮤니티 목록 불러오기 + 콤보박스 검색/선택
+//   - 로그인 사용자 → 제목/커뮤니티/카테고리/본문/미디어 첨부 → Supabase posts 테이블에 저장
 //   - 이미지 첨부 시 browser-image-compression으로 자동 압축 (maxSizeMB: 1, maxWidthOrHeight: 1920)
 //   - 동영상 첨부 시 50MB 하드 리미트 검증
 // 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
 import imageCompression from "browser-image-compression";
@@ -25,10 +27,16 @@ import {
   Film,
   X,
   CheckCircle2,
+  Users,
+  Plus,
+  Search,
+  ShieldCheck,
+  Lock,
+  ChevronDown,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
-// 카테고리 옵션 목록
+// ─── 카테고리 옵션 목록 ───
 const CATEGORIES = ["자유", "사업", "마케팅", "커리어"];
 
 // ═══════════════════════════════════════════════════════
@@ -55,6 +63,14 @@ type AttachedFile = {
   compressedSize: number; // 압축 후 크기 (바이트)
 };
 
+// ─── 커뮤니티 타입 정의 ───
+type Community = {
+  id: string;
+  name: string;
+  description: string;
+  member_count: number;
+};
+
 // ─── 파일 크기를 읽기 좋은 문자열로 변환 ───
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -72,6 +88,18 @@ export default function SubmitPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // ─── VIP 인증 상태 ───
+  const [isVerified, setIsVerified] = useState(false); // VIP 크리에이터 여부
+
+  // ─── 커뮤니티 관련 상태 ───
+  const [communities, setCommunities] = useState<Community[]>([]); // 전체 커뮤니티 목록
+  const [selectedCommunityId, setSelectedCommunityId] = useState<string | null>(null); // 선택된 커뮤니티 ID
+  const [communitySearch, setCommunitySearch] = useState(""); // 커뮤니티 검색어
+  const [showCommunityDropdown, setShowCommunityDropdown] = useState(false); // 드롭다운 열림/닫힘
+  const [creatingCommunity, setCreatingCommunity] = useState(false); // 커뮤니티 생성 중
+  const communityInputRef = useRef<HTMLInputElement>(null); // 커뮤니티 검색 input ref
+  const communityDropdownRef = useRef<HTMLDivElement>(null); // 드롭다운 ref (외부 클릭 감지용)
+
   // ─── 파일 첨부 관련 상태 ───
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]); // 첨부된 파일 목록
   const [compressing, setCompressing] = useState(false); // 이미지 압축 진행 중 여부
@@ -80,7 +108,19 @@ export default function SubmitPage() {
 
   const router = useRouter();
 
-  // ─── 마운트 시 로그인 여부 확인 ───
+  // ─── 커뮤니티 목록 불러오기 ───
+  const fetchCommunities = useCallback(async () => {
+    const { data } = await supabase
+      .from("communities")
+      .select("id, name, description, member_count")
+      .order("member_count", { ascending: false });
+
+    if (data) {
+      setCommunities(data as Community[]);
+    }
+  }, []);
+
+  // ─── 마운트 시 로그인 여부 확인 + VIP 조회 + 커뮤니티 로드 ───
   useEffect(() => {
     const checkAuth = async () => {
       const {
@@ -92,12 +132,42 @@ export default function SubmitPage() {
         return;
       }
 
-      setUser(session.user);
+      const currentUser = session.user;
+      setUser(currentUser);
+
+      // ─── VIP 인증 여부 조회: verified_creators 테이블에 user_id가 있는지 확인 ───
+      const { data: verifiedData } = await supabase
+        .from("verified_creators")
+        .select("id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle();
+
+      // 데이터가 존재하면 VIP 인증된 사용자
+      setIsVerified(!!verifiedData);
+
+      // ─── 커뮤니티 목록 불러오기 ───
+      await fetchCommunities();
+
       setAuthLoading(false);
     };
 
     checkAuth();
-  }, [router]);
+  }, [router, fetchCommunities]);
+
+  // ─── 드롭다운 외부 클릭 시 닫기 ───
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        communityDropdownRef.current &&
+        !communityDropdownRef.current.contains(e.target as Node)
+      ) {
+        setShowCommunityDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   // ─── 컴포넌트 언마운트 시 미리보기 URL 정리 (메모리 누수 방지) ───
   useEffect(() => {
@@ -108,6 +178,68 @@ export default function SubmitPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── 커뮤니티 검색 필터 (입력값 기준 목록 필터링) ───
+  const filteredCommunities = communities.filter((c) =>
+    c.name.toLowerCase().includes(communitySearch.toLowerCase())
+  );
+
+  // 검색어와 정확히 일치하는 커뮤니티가 있는지 확인 (새 커뮤니티 생성 버튼 표시 여부)
+  const exactMatch = communities.some(
+    (c) => c.name.toLowerCase() === communitySearch.trim().toLowerCase()
+  );
+
+  // ─── 커뮤니티 선택 핸들러 ───
+  const handleSelectCommunity = (community: Community) => {
+    setSelectedCommunityId(community.id);
+    setCommunitySearch(community.name);
+    setShowCommunityDropdown(false);
+  };
+
+  // ─── 커뮤니티 선택 해제 ───
+  const handleClearCommunity = () => {
+    setSelectedCommunityId(null);
+    setCommunitySearch("");
+  };
+
+  // ─── VIP 전용: 새 커뮤니티 생성 핸들러 ───
+  const handleCreateCommunity = async () => {
+    const newName = communitySearch.trim();
+    if (!newName || !user) return;
+
+    setCreatingCommunity(true);
+
+    // communities 테이블에 새 커뮤니티 생성
+    const { data: newCommunity, error: createError } = await supabase
+      .from("communities")
+      .insert({
+        name: newName,
+        description: "",
+        created_by: user.id,
+      })
+      .select("id, name, description, member_count")
+      .single();
+
+    if (createError) {
+      if (createError.message.includes("unique") || createError.message.includes("duplicate")) {
+        setError("이미 존재하는 커뮤니티 이름입니다.");
+      } else {
+        setError("커뮤니티 생성에 실패했습니다: " + createError.message);
+      }
+      setCreatingCommunity(false);
+      return;
+    }
+
+    if (newCommunity) {
+      // 생성된 커뮤니티를 목록에 추가하고 자동 선택
+      setCommunities((prev) => [newCommunity as Community, ...prev]);
+      setSelectedCommunityId(newCommunity.id);
+      setCommunitySearch(newCommunity.name);
+      setShowCommunityDropdown(false);
+    }
+
+    setCreatingCommunity(false);
+  };
 
   // ═══════════════════════════════════════════════════════
   // 파일 선택 핸들러
@@ -321,12 +453,18 @@ export default function SubmitPage() {
 
       // 3단계: 게시글 저장
       // 이미지 URL은 image_urls JSONB 컬럼에 별도 저장 (본문과 분리)
+      // 커뮤니티가 선택되었으면 community_id도 함께 저장
       const insertData: Record<string, unknown> = {
         author_id: user.id,
         title: title.trim(),
         content: content.trim(),
         category,
       };
+
+      // 커뮤니티가 선택되었으면 community_id 추가
+      if (selectedCommunityId) {
+        insertData.community_id = selectedCommunityId;
+      }
 
       // 업로드된 파일 URL이 있으면 image_urls 컬럼에 배열로 저장
       if (uploadedUrls.length > 0) {
@@ -380,6 +518,14 @@ export default function SubmitPage() {
           <FileText className="h-5 w-5 text-primary" />
           <h1 className="text-xl font-bold text-foreground">새 글 작성</h1>
         </div>
+
+        {/* VIP 뱃지 표시 */}
+        {isVerified && (
+          <span className="ml-auto flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-1 text-xs font-medium text-primary">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            VIP 크리에이터
+          </span>
+        )}
       </div>
 
       {/* 글쓰기 카드 (다크 테마) */}
@@ -392,6 +538,121 @@ export default function SubmitPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+
+          {/* ═══════════════════════════════════════════════════════ */}
+          {/* 커뮤니티 선택 콤보박스                                    */}
+          {/* VIP: 새 커뮤니티 생성 가능 / 일반: 기존 커뮤니티만 선택      */}
+          {/* ═══════════════════════════════════════════════════════ */}
+          <div>
+            <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <Users className="h-4 w-4 text-muted" />
+              커뮤니티
+              <span className="text-xs font-normal text-muted">(선택사항)</span>
+            </label>
+
+            <div ref={communityDropdownRef} className="relative">
+              {/* 선택된 커뮤니티가 있으면 표시, 없으면 검색 입력 */}
+              {selectedCommunityId ? (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-4 py-2.5">
+                  <Users className="h-4 w-4 text-primary shrink-0" />
+                  <span className="flex-1 text-sm font-medium text-foreground">
+                    {communitySearch}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearCommunity}
+                    className="rounded-full p-1 text-muted hover:bg-hover-bg hover:text-foreground"
+                    aria-label="커뮤니티 선택 해제"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+                  <input
+                    ref={communityInputRef}
+                    type="text"
+                    value={communitySearch}
+                    onChange={(e) => {
+                      setCommunitySearch(e.target.value);
+                      setShowCommunityDropdown(true);
+                    }}
+                    onFocus={() => setShowCommunityDropdown(true)}
+                    placeholder="커뮤니티를 검색하거나 선택하세요..."
+                    className="w-full rounded-lg border border-border-color bg-input-bg py-2.5 pl-10 pr-10 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+                </div>
+              )}
+
+              {/* ─── 커뮤니티 드롭다운 ─── */}
+              {showCommunityDropdown && !selectedCommunityId && (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border-color bg-card-bg shadow-xl">
+
+                  {/* 필터된 커뮤니티 목록 */}
+                  {filteredCommunities.length > 0 ? (
+                    filteredCommunities.map((community) => (
+                      <button
+                        key={community.id}
+                        type="button"
+                        onClick={() => handleSelectCommunity(community)}
+                        className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-hover-bg"
+                      >
+                        <Users className="h-4 w-4 text-muted shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-foreground">{community.name}</p>
+                          {community.description && (
+                            <p className="truncate text-xs text-muted">
+                              {community.description}
+                            </p>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-xs text-muted">
+                          {community.member_count}명
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-4 py-3 text-center text-sm text-muted">
+                      검색 결과가 없습니다
+                    </div>
+                  )}
+
+                  {/* ─── 검색어가 있고, 정확히 일치하는 커뮤니티가 없을 때 ─── */}
+                  {communitySearch.trim() && !exactMatch && (
+                    <div className="border-t border-border-color px-4 py-3">
+                      {isVerified ? (
+                        // ✅ VIP 유저: 새 커뮤니티 생성 버튼
+                        <button
+                          type="button"
+                          onClick={handleCreateCommunity}
+                          disabled={creatingCommunity}
+                          className="flex w-full items-center gap-2 rounded-lg bg-primary/15 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/25 disabled:opacity-50"
+                        >
+                          {creatingCommunity ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                          &quot;{communitySearch.trim()}&quot; 커뮤니티 새로 만들기
+                        </button>
+                      ) : (
+                        // 🔒 일반 유저: 안내 메시지
+                        <div className="flex items-center gap-2 text-xs text-muted">
+                          <Lock className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            사업자 인증 회원만 새 커뮤니티를 만들 수 있습니다.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* 카테고리 선택 */}
           <div>
             <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-foreground">
