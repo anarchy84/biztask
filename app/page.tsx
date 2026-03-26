@@ -26,6 +26,10 @@ import {
   Loader2,
   Plus,
   X,
+  Pencil,
+  Trash2,
+  Users,
+  Hash,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -121,13 +125,23 @@ function Home() {
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [isVip, setIsVip] = useState(false); // VIP 크리에이터 여부
 
-  // ─── 카테고리(커뮤니티) 동적 로딩 + 생성 모달 관련 상태 ───
-  type Community = { id: string; name: string };
-  const [communities, setCommunities] = useState<Community[]>([]); // DB에서 불러온 커뮤니티(카테고리) 목록
-  const [showCreateModal, setShowCreateModal] = useState(false);   // 카테고리 생성 모달 표시 여부
-  const [newCatName, setNewCatName] = useState("");               // 새 카테고리 이름 입력값
-  const [newCatDesc, setNewCatDesc] = useState("");               // 새 카테고리 설명 입력값
-  const [creating, setCreating] = useState(false);                // 생성 중 로딩 상태
+  // ─── 카테고리 (글 주제 태그) 관련 상태 ───
+  type Category = { id: string; name: string; color: string; sort_order: number };
+  const [categories, setCategories] = useState<Category[]>([]);     // DB categories 테이블
+  const [showCatModal, setShowCatModal] = useState(false);          // 카테고리 추가 모달
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatColor, setNewCatColor] = useState("#9ca3af");
+  const [editingCat, setEditingCat] = useState<Category | null>(null); // 수정 중인 카테고리
+  const [catCreating, setCatCreating] = useState(false);
+
+  // ─── 커뮤니티 (레딧 서브레딧 스타일) 관련 상태 ───
+  type Community = { id: string; name: string; slug: string | null; description: string; member_count: number; icon_url: string | null };
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [showCommunityModal, setShowCommunityModal] = useState(false);
+  const [newComName, setNewComName] = useState("");
+  const [newComDesc, setNewComDesc] = useState("");
+  const [newComSlug, setNewComSlug] = useState("");
+  const [comCreating, setComCreating] = useState(false);
 
   // ─── 게시글 목록 불러오기 ───
   const fetchPosts = useCallback(
@@ -185,36 +199,106 @@ function Home() {
     }
   }, []);
 
-  // ─── 커뮤니티(카테고리) 목록 불러오기 ───
+  // ─── 카테고리 목록 불러오기 (categories 테이블) ───
+  const fetchCategories = useCallback(async () => {
+    const { data } = await supabase
+      .from("categories")
+      .select("id, name, color, sort_order")
+      .order("sort_order", { ascending: true });
+    if (data) setCategories(data as Category[]);
+  }, []);
+
+  // ─── 커뮤니티 목록 불러오기 (communities 테이블) ───
   const fetchCommunities = useCallback(async () => {
     const { data } = await supabase
       .from("communities")
-      .select("id, name")
-      .order("name", { ascending: true });
+      .select("id, name, slug, description, member_count, icon_url")
+      .eq("is_active", true)
+      .order("member_count", { ascending: false });
     if (data) setCommunities(data as Community[]);
   }, []);
 
-  // ─── VIP 전용: 새 카테고리(커뮤니티) 생성 ───
-  const handleCreateCategory = async () => {
+  // ─── VIP 전용: 새 카테고리 추가/수정 ───
+  const handleSaveCategory = async () => {
     if (!newCatName.trim() || !user) return;
-    setCreating(true);
+    setCatCreating(true);
+
+    if (editingCat) {
+      // 수정 모드
+      const { error } = await supabase
+        .from("categories")
+        .update({ name: newCatName.trim(), color: newCatColor })
+        .eq("id", editingCat.id);
+      if (error) {
+        alert("카테고리 수정 실패: " + error.message);
+      } else {
+        await fetchCategories();
+        closeAllModals();
+      }
+    } else {
+      // 새로 만들기
+      const nextOrder = categories.length > 0 ? Math.max(...categories.map(c => c.sort_order)) + 1 : 1;
+      const { error } = await supabase.from("categories").insert({
+        name: newCatName.trim(),
+        color: newCatColor,
+        sort_order: nextOrder,
+        created_by: user.id,
+      });
+      if (error) {
+        alert("카테고리 추가 실패: " + error.message);
+      } else {
+        await fetchCategories();
+        closeAllModals();
+      }
+    }
+    setCatCreating(false);
+  };
+
+  // ─── VIP 전용: 카테고리 삭제 ───
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (!confirm(`'${catName}' 카테고리를 삭제하시겠습니까?`)) return;
+    const { error } = await supabase.from("categories").delete().eq("id", catId);
+    if (error) {
+      alert("삭제 실패: " + error.message);
+    } else {
+      await fetchCategories();
+    }
+  };
+
+  // ─── VIP 전용: 새 커뮤니티 생성 ───
+  const handleCreateCommunity = async () => {
+    if (!newComName.trim() || !user) return;
+    setComCreating(true);
+
+    // slug 자동 생성: 한글은 그대로, 공백은 하이픈으로
+    const slug = newComSlug.trim() || newComName.trim().toLowerCase().replace(/\s+/g, "-");
 
     const { error } = await supabase.from("communities").insert({
-      name: newCatName.trim(),
-      description: newCatDesc.trim() || null,
+      name: newComName.trim(),
+      slug,
+      description: newComDesc.trim() || null,
       created_by: user.id,
     });
 
     if (error) {
-      alert("카테고리 생성 실패: " + error.message);
+      alert("커뮤니티 생성 실패: " + error.message);
     } else {
-      // 생성 성공 → 목록 새로고침 + 모달 닫기
       await fetchCommunities();
-      setNewCatName("");
-      setNewCatDesc("");
-      setShowCreateModal(false);
+      closeAllModals();
     }
-    setCreating(false);
+    setComCreating(false);
+  };
+
+  // ─── 모달 닫기 + 입력 초기화 ───
+  const closeAllModals = () => {
+    setShowCatModal(false);
+    setShowCommunityModal(false);
+    setEditingCat(null);
+    setNewCatName("");
+    setNewCatColor("#9ca3af");
+    setNewComName("");
+    setNewComDesc("");
+    setNewComSlug("");
   };
 
   // ─── 초기 + URL 변경 시 데이터 로드 ───
@@ -244,13 +328,14 @@ function Home() {
       await Promise.all([
         fetchPosts(currentCategory, currentSort),
         fetchTrending(),
+        fetchCategories(),
         fetchCommunities(),
       ]);
       setLoading(false);
     };
 
     init();
-  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes, fetchCommunities]);
+  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes, fetchCategories, fetchCommunities]);
 
   // ─── URL 파라미터 조합 헬퍼 ───
   function buildCategoryUrl(category: string): string {
@@ -370,74 +455,104 @@ function Home() {
 
             <div className="my-3 border-t border-border-color" />
 
-            {/* 카테고리 서브 메뉴 + VIP 전용 카테고리 추가 버튼 */}
+            {/* ─── 카테고리 섹션 (글 주제 태그) ─── */}
             <div className="flex items-center justify-between px-3 py-1.5">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
                 카테고리
               </h3>
-              {/* VIP 유저에게만 '+' 버튼 표시 → 카테고리 생성 모달 열기 */}
               {isVip && (
                 <button
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => { setEditingCat(null); setNewCatName(""); setNewCatColor("#9ca3af"); setShowCatModal(true); }}
                   className="flex h-5 w-5 items-center justify-center rounded-md text-muted transition-colors hover:bg-primary/20 hover:text-primary"
                   aria-label="카테고리 추가"
-                  title="새 카테고리 만들기 (VIP 전용)"
+                  title="새 카테고리 추가 (VIP 전용)"
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
 
-            {/* 기본 카테고리 4종 */}
-            {["사업", "마케팅", "커리어", "자유"].map((cat) => {
-              const isActive = currentCategory === cat;
+            {/* DB에서 불러온 카테고리 목록 */}
+            {categories.map((cat) => {
+              const isActive = currentCategory === cat.name;
               return (
-                <Link
-                  key={cat}
-                  href={buildCategoryUrl(cat)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    isActive
-                      ? "bg-primary/15 text-primary font-semibold"
-                      : "text-muted hover:bg-hover-bg hover:text-foreground"
-                  }`}
-                >
-                  <span className={`h-2 w-2 rounded-full shrink-0 ${
-                    isActive ? "bg-primary" :
-                    cat === "사업" ? "bg-green-400" :
-                    cat === "마케팅" ? "bg-purple-400" :
-                    cat === "커리어" ? "bg-cyan-400" :
-                    "bg-amber-400"
-                  }`} />
-                  <span>{cat}</span>
-                </Link>
-              );
-            })}
-
-            {/* DB에서 불러온 커뮤니티(사용자 생성 카테고리) 목록 */}
-            {/* 기본 4종("사업","마케팅","커리어","자유")과 겹치지 않는 것만 표시 */}
-            {communities
-              .filter((c) => !["사업", "마케팅", "커리어", "자유"].includes(c.name))
-              .map((c) => {
-                const isActive = currentCategory === c.name;
-                return (
+                <div key={cat.id} className="group flex items-center">
                   <Link
-                    key={c.id}
-                    href={buildCategoryUrl(c.name)}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    href={buildCategoryUrl(cat.name)}
+                    className={`flex flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                       isActive
                         ? "bg-primary/15 text-primary font-semibold"
                         : "text-muted hover:bg-hover-bg hover:text-foreground"
                     }`}
                   >
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${
-                      isActive ? "bg-primary" : "bg-gray-400"
-                    }`} />
-                    <span>{c.name}</span>
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: isActive ? "#73e346" : cat.color }}
+                    />
+                    <span>{cat.name}</span>
                   </Link>
-                );
-              })}
+                  {/* VIP: 수정/삭제 버튼 (호버 시 표시) */}
+                  {isVip && (
+                    <div className="hidden group-hover:flex items-center gap-0.5 pr-1">
+                      <button
+                        onClick={() => { setEditingCat(cat); setNewCatName(cat.name); setNewCatColor(cat.color); setShowCatModal(true); }}
+                        className="rounded p-1 text-muted hover:text-primary hover:bg-primary/10"
+                        title="수정"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        className="rounded p-1 text-muted hover:text-red-400 hover:bg-red-400/10"
+                        title="삭제"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-            {/* ─── VIP 크리에이터 라운지 (isVip === true일 때만 렌더링) ─── */}
+            <div className="my-3 border-t border-border-color" />
+
+            {/* ─── 커뮤니티 섹션 (레딧 서브레딧 스타일) ─── */}
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                커뮤니티
+              </h3>
+              {isVip && (
+                <button
+                  onClick={() => { setNewComName(""); setNewComDesc(""); setNewComSlug(""); setShowCommunityModal(true); }}
+                  className="flex h-5 w-5 items-center justify-center rounded-md text-muted transition-colors hover:bg-primary/20 hover:text-primary"
+                  aria-label="커뮤니티 생성"
+                  title="새 커뮤니티 만들기 (VIP 전용)"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 커뮤니티 목록 → 클릭 시 /community/[slug] 이동 */}
+            {communities.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted">아직 커뮤니티가 없습니다</p>
+            ) : (
+              communities.map((com) => (
+                <Link
+                  key={com.id}
+                  href={`/community/${com.slug || com.id}`}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-hover-bg hover:text-foreground"
+                >
+                  <Users className="h-4 w-4 shrink-0 text-primary/60" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate">{com.name}</span>
+                    <span className="text-[10px] text-muted">{com.member_count}명</span>
+                  </div>
+                </Link>
+              ))
+            )}
+
+            {/* ─── VIP 크리에이터 라운지 (isVip일 때만) ─── */}
             {isVip && (
               <>
                 <div className="my-3 border-t border-border-color" />
@@ -512,38 +627,39 @@ function Home() {
               className="ml-auto shrink-0 rounded-lg border border-border-color bg-input-bg px-3 py-1.5 text-xs font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="">전체</option>
-              <option value="사업">사업</option>
-              <option value="마케팅">마케팅</option>
-              <option value="커리어">커리어</option>
-              <option value="자유">자유</option>
-              {/* DB에서 불러온 사용자 생성 카테고리 (기본 4종 제외) */}
-              {communities
-                .filter((c) => !["사업", "마케팅", "커리어", "자유"].includes(c.name))
-                .map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
+              {/* DB에서 불러온 카테고리 목록 */}
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.name}>{cat.name}</option>
+              ))}
               {isVip && <option value="VIP 전용">💎 VIP 전용</option>}
             </select>
           </div>
 
           {/* 모바일 전용: 카테고리 가로 스크롤 */}
           <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-            {["전체", "사업", "마케팅", "커리어", "자유"].map((cat) => {
-              const isActive =
-                (cat === "전체" && !currentCategory) ||
-                cat === currentCategory;
-
+            <Link
+              href={buildCategoryUrl("")}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                !currentCategory
+                  ? "bg-primary text-black"
+                  : "border border-border-color text-muted hover:border-primary hover:text-primary"
+              }`}
+            >
+              전체
+            </Link>
+            {categories.map((cat) => {
+              const isActive = cat.name === currentCategory;
               return (
                 <Link
-                  key={cat}
-                  href={cat === "전체" ? buildCategoryUrl("") : buildCategoryUrl(cat)}
+                  key={cat.id}
+                  href={buildCategoryUrl(cat.name)}
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                     isActive
                       ? "bg-primary text-black"
                       : "border border-border-color text-muted hover:border-primary hover:text-primary"
                   }`}
                 >
-                  {cat}
+                  {cat.name}
                 </Link>
               );
             })}
@@ -658,37 +774,33 @@ function Home() {
       </div>
 
       {/* ═══════════════════════════════════════════ */}
-      {/* VIP 전용: 카테고리 생성 모달                   */}
-      {/* 사이드바 '+' 버튼 클릭 시 열림                 */}
+      {/* VIP 전용: 카테고리 추가/수정 모달              */}
       {/* ═══════════════════════════════════════════ */}
-      {showCreateModal && (
+      {showCatModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setShowCreateModal(false)} // 배경 클릭 시 닫기
+          onClick={closeAllModals}
         >
           <div
             className="relative w-full max-w-md rounded-2xl border border-border-color bg-card-bg p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()} // 모달 내부 클릭은 전파 차단
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* 닫기 버튼 */}
             <button
-              onClick={() => setShowCreateModal(false)}
+              onClick={closeAllModals}
               className="absolute top-4 right-4 rounded-full p-1 text-muted hover:bg-hover-bg hover:text-foreground transition-colors"
-              aria-label="모달 닫기"
             >
               <X className="h-5 w-5" />
             </button>
 
-            {/* 모달 헤더 */}
             <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-              <Plus className="h-5 w-5 text-primary" />
-              새 카테고리 만들기
+              <Hash className="h-5 w-5 text-primary" />
+              {editingCat ? "카테고리 수정" : "새 카테고리 추가"}
             </h2>
             <p className="mt-1 text-xs text-muted">
-              💎 VIP 크리에이터 전용 기능입니다. 새로운 카테고리를 만들어 커뮤니티를 키워보세요!
+              💎 VIP 전용 — 글 주제 분류용 카테고리를 {editingCat ? "수정" : "추가"}합니다.
             </p>
 
-            {/* 카테고리 이름 입력 */}
+            {/* 카테고리 이름 */}
             <div className="mt-5">
               <label className="block text-xs font-semibold text-foreground mb-1.5">
                 카테고리 이름 <span className="text-red-400">*</span>
@@ -704,17 +816,122 @@ function Home() {
               <p className="mt-1 text-right text-[11px] text-muted">{newCatName.length}/20</p>
             </div>
 
-            {/* 카테고리 설명 입력 (선택) */}
+            {/* 색상 선택 */}
+            <div className="mt-3">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                태그 색상
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {["#4ade80", "#c084fc", "#22d3ee", "#fbbf24", "#f87171", "#fb923c", "#a78bfa", "#9ca3af"].map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setNewCatColor(color)}
+                    className={`h-7 w-7 rounded-full border-2 transition-all ${
+                      newCatColor === color ? "border-white scale-110" : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* 액션 버튼 */}
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={closeAllModals}
+                className="flex-1 rounded-lg border border-border-color px-4 py-2.5 text-sm font-medium text-muted hover:bg-hover-bg transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSaveCategory}
+                disabled={!newCatName.trim() || catCreating}
+                className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {catCreating ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    처리 중...
+                  </span>
+                ) : editingCat ? "수정하기" : "추가하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* VIP 전용: 커뮤니티 생성 모달                    */}
+      {/* ═══════════════════════════════════════════ */}
+      {showCommunityModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={closeAllModals}
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl border border-border-color bg-card-bg p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={closeAllModals}
+              className="absolute top-4 right-4 rounded-full p-1 text-muted hover:bg-hover-bg hover:text-foreground transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+              <Users className="h-5 w-5 text-primary" />
+              새 커뮤니티 만들기
+            </h2>
+            <p className="mt-1 text-xs text-muted">
+              💎 VIP 전용 — 레딧처럼 주제별 커뮤니티를 만들어 운영하세요!
+            </p>
+
+            {/* 커뮤니티 이름 */}
+            <div className="mt-5">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                커뮤니티 이름 <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={newComName}
+                onChange={(e) => setNewComName(e.target.value)}
+                placeholder="예: 마케팅 연구소, 스타트업 라운지..."
+                maxLength={30}
+                className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="mt-1 text-right text-[11px] text-muted">{newComName.length}/30</p>
+            </div>
+
+            {/* URL 슬러그 */}
+            <div className="mt-3">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                URL 주소 <span className="text-muted">(선택 — 비워두면 자동 생성)</span>
+              </label>
+              <div className="flex items-center gap-1 rounded-lg border border-border-color bg-input-bg px-3 py-2.5">
+                <span className="text-xs text-muted">/community/</span>
+                <input
+                  type="text"
+                  value={newComSlug}
+                  onChange={(e) => setNewComSlug(e.target.value.replace(/[^a-zA-Z0-9가-힣-]/g, ""))}
+                  placeholder="marketing-lab"
+                  maxLength={30}
+                  className="flex-1 bg-transparent text-sm text-foreground placeholder-muted focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* 커뮤니티 설명 */}
             <div className="mt-3">
               <label className="block text-xs font-semibold text-foreground mb-1.5">
                 설명 <span className="text-muted">(선택)</span>
               </label>
               <textarea
-                value={newCatDesc}
-                onChange={(e) => setNewCatDesc(e.target.value)}
-                placeholder="이 카테고리에 대한 짧은 설명..."
-                maxLength={100}
-                rows={2}
+                value={newComDesc}
+                onChange={(e) => setNewComDesc(e.target.value)}
+                placeholder="이 커뮤니티의 주제와 목적을 알려주세요..."
+                maxLength={200}
+                rows={3}
                 className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-none"
               />
             </div>
@@ -722,24 +939,22 @@ function Home() {
             {/* 액션 버튼 */}
             <div className="mt-5 flex gap-2">
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={closeAllModals}
                 className="flex-1 rounded-lg border border-border-color px-4 py-2.5 text-sm font-medium text-muted hover:bg-hover-bg transition-colors"
               >
                 취소
               </button>
               <button
-                onClick={handleCreateCategory}
-                disabled={!newCatName.trim() || creating}
+                onClick={handleCreateCommunity}
+                disabled={!newComName.trim() || comCreating}
                 className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {creating ? (
+                {comCreating ? (
                   <span className="flex items-center justify-center gap-1.5">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     생성 중...
                   </span>
-                ) : (
-                  "카테고리 만들기"
-                )}
+                ) : "커뮤니티 만들기"}
               </button>
             </div>
           </div>
