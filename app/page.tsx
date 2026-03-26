@@ -323,41 +323,54 @@ function Home() {
     setNewComSlug("");
   };
 
-  // ─── 초기 + URL 변경 시 데이터 로드 ───
+  // ─── useEffect 1: 초기 1회만 실행 (인증 + 사이드바 데이터) ───
+  // 카테고리/정렬 변경과 무관하게 딱 한 번만 로드
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-
+    const initOnce = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       if (session?.user) {
         setUser(session.user);
-        await fetchMyLikes(session.user.id);
 
-        // ─── VIP 여부 조회: profiles 테이블의 is_vip 컬럼 확인 ───
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("is_vip")
-          .eq("id", session.user.id)
-          .maybeSingle();
+        // VIP 여부 + 좋아요 목록을 병렬 조회
+        const [profileRes] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("is_vip")
+            .eq("id", session.user.id)
+            .maybeSingle(),
+          fetchMyLikes(session.user.id),
+        ]);
 
-        if (profileData?.is_vip) {
+        if (profileRes.data?.is_vip) {
           setIsVip(true);
         }
       }
 
+      // 사이드바 데이터: 카테고리 + 커뮤니티 + 트렌딩 (1회)
       await Promise.all([
-        fetchPosts(currentCategory, currentSort),
-        fetchTrending(),
         fetchCategories(),
         fetchCommunities(),
+        fetchTrending(),
       ]);
+    };
+
+    initOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── useEffect 2: 카테고리/정렬 변경 시 게시글만 다시 로드 ───
+  useEffect(() => {
+    const loadPosts = async () => {
+      setLoading(true);
+      await fetchPosts(currentCategory, currentSort);
       setLoading(false);
     };
 
-    init();
-  }, [currentCategory, currentSort, fetchPosts, fetchTrending, fetchMyLikes, fetchCategories, fetchCommunities]);
+    loadPosts();
+  }, [currentCategory, currentSort, fetchPosts]);
 
   // ─── URL 파라미터 조합 헬퍼 ───
   function buildCategoryUrl(category: string): string {
@@ -431,14 +444,24 @@ function Home() {
     router.push(buildCategoryUrl(category));
   };
 
-  // ─── 로딩 화면 ───
-  if (loading) {
-    return (
-      <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  // ─── 스켈레톤 카드 컴포넌트 (게시글 로딩 중 표시) ───
+  const SkeletonCard = () => (
+    <div className="animate-pulse rounded-xl border border-border-color bg-card-bg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-5 w-5 rounded-full bg-hover-bg" />
+        <div className="h-3 w-16 rounded bg-hover-bg" />
+        <div className="h-3 w-24 rounded bg-hover-bg" />
       </div>
-    );
-  }
+      <div className="h-4 w-3/4 rounded bg-hover-bg mb-2" />
+      <div className="h-3 w-full rounded bg-hover-bg mb-1" />
+      <div className="h-3 w-2/3 rounded bg-hover-bg mb-4" />
+      <div className="flex items-center gap-3">
+        <div className="h-7 w-20 rounded-full bg-hover-bg" />
+        <div className="h-7 w-16 rounded-full bg-hover-bg" />
+        <div className="h-7 w-14 rounded-full bg-hover-bg" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-4 md:px-8">
@@ -687,8 +710,17 @@ function Home() {
             })}
           </div>
 
-          {/* 게시글이 없을 때 */}
-          {posts.length === 0 && (
+          {/* 로딩 중 스켈레톤 UI */}
+          {loading && (
+            <div className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          )}
+
+          {/* 게시글이 없을 때 (로딩 완료 후) */}
+          {!loading && posts.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-border-color bg-card-bg py-16 text-center">
               <Inbox className="mb-4 h-12 w-12 text-muted" />
               <h3 className="mb-1 text-lg font-semibold text-foreground">
@@ -720,8 +752,8 @@ function Home() {
             </div>
           )}
 
-          {/* 게시글 카드 목록 */}
-          {posts.map((post) => (
+          {/* 게시글 카드 목록 (로딩 완료 후) */}
+          {!loading && posts.map((post) => (
             <Link
               key={post.id}
               href={`/post/${post.id}`}
