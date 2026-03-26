@@ -117,6 +117,7 @@ function Home() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const [isVip, setIsVip] = useState(false); // VIP 크리에이터 여부
 
   // ─── 게시글 목록 불러오기 ───
   const fetchPosts = useCallback(
@@ -185,6 +186,17 @@ function Home() {
       if (session?.user) {
         setUser(session.user);
         await fetchMyLikes(session.user.id);
+
+        // ─── VIP 여부 조회: profiles 테이블의 is_vip 컬럼 확인 ───
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("is_vip")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+        if (profileData?.is_vip) {
+          setIsVip(true);
+        }
       }
 
       await Promise.all([
@@ -342,6 +354,28 @@ function Home() {
                 </Link>
               );
             })}
+
+            {/* ─── VIP 크리에이터 라운지 (isVip === true일 때만 렌더링) ─── */}
+            {isVip && (
+              <>
+                <div className="my-3 border-t border-border-color" />
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                  <h3 className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                    <span>💎</span>
+                    VIP 크리에이터 라운지
+                  </h3>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted">
+                    인증된 크리에이터 전용 공간입니다. 커뮤니티 생성, VIP 전용 콘텐츠를 이용하세요.
+                  </p>
+                  <Link
+                    href="/?category=VIP 전용"
+                    className="mt-2 flex items-center justify-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-black hover:bg-primary-hover transition-colors"
+                  >
+                    💎 VIP 전용 글 보기
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         </aside>
 
@@ -388,6 +422,20 @@ function Home() {
                 </Link>
               </div>
             )}
+
+            {/* ─── 카테고리 콤보박스 (우측 끝) ─── */}
+            <select
+              value={currentCategory}
+              onChange={(e) => router.push(buildCategoryUrl(e.target.value))}
+              className="ml-auto shrink-0 rounded-lg border border-border-color bg-input-bg px-3 py-1.5 text-xs font-medium text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">전체</option>
+              <option value="사업">사업</option>
+              <option value="마케팅">마케팅</option>
+              <option value="커리어">커리어</option>
+              <option value="자유">자유</option>
+              {isVip && <option value="VIP 전용">💎 VIP 전용</option>}
+            </select>
           </div>
 
           {/* 모바일 전용: 카테고리 가로 스크롤 */}

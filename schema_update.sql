@@ -74,3 +74,11 @@ DROP POLICY IF EXISTS "프로필 자동 생성" ON profiles;
 CREATE POLICY "프로필 자동 생성"
   ON profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
+
+-- -------------------------------------------------
+-- 4) VIP 크리에이터 판별용 컬럼 추가
+--    is_vip = true → VIP 전용 기능(커뮤니티 생성, VIP 라운지) 이용 가능
+--    기본값은 false (일반 유저)
+--    관리자가 Supabase 대시보드에서 직접 true로 변경하여 VIP 부여
+-- -------------------------------------------------
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT false;
