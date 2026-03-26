@@ -163,6 +163,9 @@ function Home() {
   const [newComDesc, setNewComDesc] = useState("");
   const [newComSlug, setNewComSlug] = useState("");
   const [comCreating, setComCreating] = useState(false);
+  // slug 중복 체크 관련 상태
+  const [slugError, setSlugError] = useState("");
+  const [slugChecking, setSlugChecking] = useState(false);
 
   // ─── 게시글 목록 불러오기 ───
   const fetchPosts = useCallback(
@@ -287,13 +290,36 @@ function Home() {
     }
   };
 
+  // ─── slug 중복 확인 함수 (onBlur 시 호출) ───
+  // 유저가 URL 주소 입력 칸에서 포커스를 벗어날 때 미리 중복 체크
+  const checkSlugAvailability = async (slugToCheck: string) => {
+    if (!slugToCheck.trim()) {
+      setSlugError("");
+      return;
+    }
+    setSlugChecking(true);
+    const { data } = await supabase
+      .from("communities")
+      .select("id")
+      .eq("slug", slugToCheck.trim())
+      .limit(1);
+    if (data && data.length > 0) {
+      setSlugError("이미 사용 중인 URL 주소입니다. 다른 주소를 입력해 주세요.");
+    } else {
+      setSlugError("");
+    }
+    setSlugChecking(false);
+  };
+
   // ─── VIP 전용: 새 커뮤니티 생성 ───
   const handleCreateCommunity = async () => {
     if (!newComName.trim() || !user) return;
+    // slug 중복 에러가 있으면 생성 차단
+    if (slugError) return;
     setComCreating(true);
 
     // slug 자동 생성: 한글은 그대로, 공백은 하이픈으로
-    const slug = newComSlug.trim() || newComName.trim().toLowerCase().replace(/\s+/g, "-");
+    let slug = newComSlug.trim() || newComName.trim().toLowerCase().replace(/\s+/g, "-");
 
     const { error } = await supabase.from("communities").insert({
       name: newComName.trim(),
@@ -303,7 +329,25 @@ function Home() {
     });
 
     if (error) {
-      alert("커뮤니티 생성 실패: " + error.message);
+      // slug 중복 에러인 경우: 랜덤 숫자 4자리를 붙여서 자동 재시도
+      if (error.message.includes("communities_slug_key") || error.code === "23505") {
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 1000~9999
+        const retrySlug = `${slug}-${randomSuffix}`;
+        const { error: retryError } = await supabase.from("communities").insert({
+          name: newComName.trim(),
+          slug: retrySlug,
+          description: newComDesc.trim() || null,
+          created_by: user.id,
+        });
+        if (retryError) {
+          alert("커뮤니티 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+        } else {
+          await fetchCommunities();
+          closeAllModals();
+        }
+      } else {
+        alert("커뮤니티 생성에 실패했습니다: " + error.message);
+      }
     } else {
       await fetchCommunities();
       closeAllModals();
@@ -321,6 +365,8 @@ function Home() {
     setNewComName("");
     setNewComDesc("");
     setNewComSlug("");
+    setSlugError("");
+    setSlugChecking(false);
   };
 
   // ─── useEffect 1: 초기 1회만 실행 (인증 + 사이드바 데이터) ───
@@ -964,17 +1010,28 @@ function Home() {
               <label className="block text-xs font-semibold text-foreground mb-1.5">
                 URL 주소 <span className="text-muted">(선택 — 비워두면 자동 생성)</span>
               </label>
-              <div className="flex items-center gap-1 rounded-lg border border-border-color bg-input-bg px-3 py-2.5">
+              <div className={`flex items-center gap-1 rounded-lg border bg-input-bg px-3 py-2.5 ${slugError ? "border-red-500" : "border-border-color"}`}>
                 <span className="text-xs text-muted">/community/</span>
                 <input
                   type="text"
                   value={newComSlug}
-                  onChange={(e) => setNewComSlug(e.target.value.replace(/[^a-zA-Z0-9가-힣-]/g, ""))}
+                  onChange={(e) => {
+                    setNewComSlug(e.target.value.replace(/[^a-zA-Z0-9가-힣-]/g, ""));
+                    // 입력 중에는 에러 메시지 초기화
+                    if (slugError) setSlugError("");
+                  }}
+                  onBlur={() => checkSlugAvailability(newComSlug)}
                   placeholder="marketing-lab"
                   maxLength={30}
                   className="flex-1 bg-transparent text-sm text-foreground placeholder-muted focus:outline-none"
                 />
+                {/* 중복 체크 로딩 표시 */}
+                {slugChecking && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted" />}
               </div>
+              {/* 중복 에러 경고 문구 (빨간색) */}
+              {slugError && (
+                <p className="mt-1 text-xs text-red-400">{slugError}</p>
+              )}
             </div>
 
             {/* 커뮤니티 설명 */}
@@ -1002,7 +1059,7 @@ function Home() {
               </button>
               <button
                 onClick={handleCreateCommunity}
-                disabled={!newComName.trim() || comCreating}
+                disabled={!newComName.trim() || comCreating || !!slugError}
                 className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {comCreating ? (
