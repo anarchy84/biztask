@@ -31,6 +31,8 @@ type PostCardProps = {
   authorNickname: string;
   authorAvatarUrl?: string | null; // 작성자 프로필 이미지 URL (선택)
   imageUrls?: string[] | null; // 첨부 이미지 URL 배열 (선택)
+  communityName?: string | null; // 소속 커뮤니티 이름 (선택)
+  communitySlug?: string | null; // 소속 커뮤니티 slug (선택)
   isLiked: boolean;
   onToggleLike: (e: React.MouseEvent, postId: string) => void;
   onCategoryClick: (e: React.MouseEvent, category: string) => void;
@@ -182,6 +184,8 @@ export default function PostCard({
   authorNickname,
   authorAvatarUrl,
   imageUrls,
+  communityName,
+  communitySlug,
   isLiked,
   onToggleLike,
   onCategoryClick,
@@ -206,6 +210,19 @@ export default function PostCard({
             </div>
           )}
 
+          {/* 커뮤니티 뱃지 (소속 커뮤니티가 있을 때) */}
+          {communityName && (
+            <span
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (communitySlug) window.location.href = `/community/${communitySlug}`;
+              }}
+              className="cursor-pointer rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/25"
+            >
+              🏠 {communityName}
+            </span>
+          )}
           {/* 카테고리 뱃지 */}
           <span
             onClick={(e) => onCategoryClick(e, category)}

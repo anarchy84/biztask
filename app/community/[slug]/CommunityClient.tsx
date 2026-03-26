@@ -37,6 +37,11 @@ type ProfileInfo = {
   avatar_url: string | null;
 };
 
+type CommunityJoin = {
+  name: string;
+  slug: string | null;
+};
+
 type PostWithAuthor = {
   id: string;
   title: string;
@@ -48,6 +53,7 @@ type PostWithAuthor = {
   author_id: string;
   image_urls: string[] | null;
   profiles: ProfileInfo | ProfileInfo[] | null;
+  communities: CommunityJoin | CommunityJoin[] | null;
 };
 
 type CommunityInfo = {
@@ -73,6 +79,18 @@ function getAuthorAvatarUrl(profiles: PostWithAuthor["profiles"]): string | null
   if (!profiles) return null;
   if (Array.isArray(profiles)) return profiles[0]?.avatar_url || null;
   return profiles.avatar_url || null;
+}
+
+function getCommunityName(communities: PostWithAuthor["communities"]): string | null {
+  if (!communities) return null;
+  if (Array.isArray(communities)) return communities[0]?.name || null;
+  return communities.name || null;
+}
+
+function getCommunitySlug(communities: PostWithAuthor["communities"]): string | null {
+  if (!communities) return null;
+  if (Array.isArray(communities)) return communities[0]?.slug || null;
+  return communities.slug || null;
 }
 
 // 날짜 포맷: "2026년 3월 26일 생성"
@@ -132,7 +150,8 @@ export default function CommunityClient({ slug }: { slug: string }) {
         .from("posts")
         .select(
           `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
-           profiles ( nickname, avatar_url )`
+           profiles ( nickname, avatar_url ),
+           communities ( name, slug )`
         )
         .eq("community_id", communityId);
 
@@ -451,6 +470,8 @@ export default function CommunityClient({ slug }: { slug: string }) {
                   authorNickname={getAuthorNickname(post.profiles)}
                   authorAvatarUrl={getAuthorAvatarUrl(post.profiles)}
                   imageUrls={post.image_urls}
+                  communityName={getCommunityName(post.communities)}
+                  communitySlug={getCommunitySlug(post.communities)}
                   isLiked={likedPostIds.has(post.id)}
                   onToggleLike={handleToggleLike}
                   onCategoryClick={handleCategoryClick}

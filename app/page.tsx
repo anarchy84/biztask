@@ -39,6 +39,12 @@ type ProfileInfo = {
   avatar_url: string | null;
 };
 
+// 커뮤니티 조인 정보
+type CommunityInfo = {
+  name: string;
+  slug: string | null;
+};
+
 type PostWithAuthor = {
   id: string;
   title: string;
@@ -50,6 +56,7 @@ type PostWithAuthor = {
   author_id: string;
   image_urls: string[] | null;
   profiles: ProfileInfo | ProfileInfo[] | null;
+  communities: CommunityInfo | CommunityInfo[] | null; // 조인된 커뮤니티 정보
 };
 
 // 트렌딩 게시글 타입 (upvotes + category 포함)
@@ -73,6 +80,20 @@ function getAuthorAvatarUrl(profiles: PostWithAuthor["profiles"]): string | null
   if (!profiles) return null;
   if (Array.isArray(profiles)) return profiles[0]?.avatar_url || null;
   return profiles.avatar_url || null;
+}
+
+// 소속 커뮤니티 이름 추출 헬퍼
+function getCommunityName(communities: PostWithAuthor["communities"]): string | null {
+  if (!communities) return null;
+  if (Array.isArray(communities)) return communities[0]?.name || null;
+  return communities.name || null;
+}
+
+// 소속 커뮤니티 slug 추출 헬퍼
+function getCommunitySlug(communities: PostWithAuthor["communities"]): string | null {
+  if (!communities) return null;
+  if (Array.isArray(communities)) return communities[0]?.slug || null;
+  return communities.slug || null;
 }
 
 // ─── 좌측 메뉴: 레딧 스타일 5대 메인 네비게이션 ───
@@ -150,7 +171,8 @@ function Home() {
         .from("posts")
         .select(
           `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
-           profiles ( nickname, avatar_url )`
+           profiles ( nickname, avatar_url ),
+           communities ( name, slug )`
         );
 
       if (category) {
@@ -716,6 +738,8 @@ function Home() {
                 authorNickname={getAuthorNickname(post.profiles)}
                 authorAvatarUrl={getAuthorAvatarUrl(post.profiles)}
                 imageUrls={post.image_urls}
+                communityName={getCommunityName(post.communities)}
+                communitySlug={getCommunitySlug(post.communities)}
                 isLiked={likedPostIds.has(post.id)}
                 onToggleLike={handleToggleLike}
                 onCategoryClick={handleCategoryClick}

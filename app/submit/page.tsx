@@ -11,8 +11,8 @@
 
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useRef, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
 import imageCompression from "browser-image-compression";
 import {
@@ -78,7 +78,27 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+// ═══════════════════════════════════════════════════════
+// Suspense 래퍼 (useSearchParams는 Suspense 바운더리 필요)
+// ═══════════════════════════════════════════════════════
 export default function SubmitPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <SubmitForm />
+    </Suspense>
+  );
+}
+
+function SubmitForm() {
+  const searchParams = useSearchParams();
+  const communityIdFromUrl = searchParams.get("community"); // URL ?community=ID
+
   // ─── 상태 관리 ───
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -147,6 +167,19 @@ export default function SubmitPage() {
 
       // ─── 커뮤니티 목록 불러오기 ───
       await fetchCommunities();
+
+      // ─── URL 파라미터로 커뮤니티가 지정된 경우 자동 선택 ───
+      if (communityIdFromUrl) {
+        const { data: comData } = await supabase
+          .from("communities")
+          .select("id, name")
+          .eq("id", communityIdFromUrl)
+          .single();
+        if (comData) {
+          setSelectedCommunityId(comData.id);
+          setCommunitySearch(comData.name);
+        }
+      }
 
       setAuthLoading(false);
     };
@@ -484,8 +517,12 @@ export default function SubmitPage() {
         return;
       }
 
-      // 4단계: 성공 → 홈으로 이동
-      router.push("/");
+      // 4단계: 성공 → 커뮤니티에서 왔으면 커뮤니티로, 아니면 홈으로 이동
+      if (selectedCommunityId && communityIdFromUrl) {
+        router.push(`/community/${communityIdFromUrl}`);
+      } else {
+        router.push("/");
+      }
       router.refresh();
     } catch {
       setError("네트워크 오류가 발생했습니다. 다시 시도해주세요.");
@@ -530,6 +567,19 @@ export default function SubmitPage() {
 
       {/* 글쓰기 카드 (다크 테마) */}
       <div className="rounded-xl border border-border-color bg-card-bg p-6">
+        {/* 커뮤니티 글쓰기 안내 배너 (URL에서 커뮤니티가 지정된 경우) */}
+        {communityIdFromUrl && selectedCommunityId && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 py-3">
+            <Users className="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                🏠 {communitySearch} 커뮤니티에 글 작성 중
+              </p>
+              <p className="text-xs text-muted">이 글은 해당 커뮤니티에 게시됩니다.</p>
+            </div>
+          </div>
+        )}
+
         {/* 에러 메시지 */}
         {error && (
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
