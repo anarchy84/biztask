@@ -288,24 +288,30 @@ export default function SubmitPage() {
       const uploadedUrls: string[] = [];
 
       for (const af of attachedFiles) {
+        // 파일 확장자 추출 (없으면 bin)
         const fileExt = af.originalName.split(".").pop()?.toLowerCase() || "bin";
-        const filePath = `${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`;
+        // 고유 파일명 생성: user_id/timestamp_랜덤문자열.확장자
+        // → 같은 유저가 같은 이름의 파일을 올려도 절대 충돌하지 않음
+        const uniqueId = `${Date.now()}_${crypto.randomUUID()}`;
+        const filePath = `${user.id}/${uniqueId}.${fileExt}`;
 
+        // Supabase Storage 'post_images' 버킷에 업로드
         const { error: uploadError } = await supabase.storage
-          .from("post-media")
+          .from("post_images")
           .upload(filePath, af.file, {
             cacheControl: "3600",
             upsert: false,
           });
 
         if (uploadError) {
-          // Storage 버킷이 없을 수도 있으므로 에러 무시하고 계속 진행
+          // Storage 버킷이 없거나 권한 문제 시 에러 로그 후 건너뛰기
           console.warn("파일 업로드 실패:", uploadError.message);
           continue;
         }
 
+        // 업로드 완료된 파일의 공개 URL 획득
         const { data: urlData } = supabase.storage
-          .from("post-media")
+          .from("post_images")
           .getPublicUrl(filePath);
 
         if (urlData?.publicUrl) {
@@ -314,18 +320,22 @@ export default function SubmitPage() {
       }
 
       // 3단계: 게시글 저장
-      // 첨부 파일 URL은 본문 끝에 추가하거나, media_urls 컬럼이 있으면 별도 저장
-      const finalContent =
-        uploadedUrls.length > 0
-          ? `${content.trim()}\n\n---\n첨부파일:\n${uploadedUrls.map((url) => `- ${url}`).join("\n")}`
-          : content.trim();
-
-      const { error: insertError } = await supabase.from("posts").insert({
+      // 이미지 URL은 image_urls JSONB 컬럼에 별도 저장 (본문과 분리)
+      const insertData: Record<string, unknown> = {
         author_id: user.id,
         title: title.trim(),
-        content: finalContent,
+        content: content.trim(),
         category,
-      });
+      };
+
+      // 업로드된 파일 URL이 있으면 image_urls 컬럼에 배열로 저장
+      if (uploadedUrls.length > 0) {
+        insertData.image_urls = uploadedUrls;
+      }
+
+      const { error: insertError } = await supabase
+        .from("posts")
+        .insert(insertData);
 
       if (insertError) {
         if (insertError.message.includes("row-level security")) {

@@ -44,6 +44,7 @@ type PostWithAuthor = {
   comment_count: number;
   created_at: string;
   author_id: string;
+  image_urls: string[] | null;
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
@@ -125,7 +126,7 @@ function Home() {
       let query = supabase
         .from("posts")
         .select(
-          `id, title, content, category, upvotes, comment_count, created_at, author_id,
+          `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
            profiles ( nickname, avatar_url )`
         );
 
@@ -449,6 +450,7 @@ function Home() {
                 createdAt={post.created_at}
                 authorNickname={getAuthorNickname(post.profiles)}
                 authorAvatarUrl={getAuthorAvatarUrl(post.profiles)}
+                imageUrls={post.image_urls}
                 isLiked={likedPostIds.has(post.id)}
                 onToggleLike={handleToggleLike}
                 onCategoryClick={handleCategoryClick}

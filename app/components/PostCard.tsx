@@ -3,9 +3,11 @@
 // 규격: 카드 내부 패딩 px-4 py-3 통일, 아이콘 h-4 w-4 / h-5 w-5 규격화
 // 브랜드: 형광 그린 #73e346 계열
 // M11: 작성자 프로필 이미지(authorAvatarUrl) 표시 추가
+// M13: 이미지 썸네일을 Next.js <Image> 컴포넌트로 교체 (외부 이미지 최적화)
 
 "use client";
 
+import Image from "next/image";
 import {
   ArrowBigUp,
   ArrowBigDown,
@@ -25,6 +27,7 @@ type PostCardProps = {
   createdAt: string;
   authorNickname: string;
   authorAvatarUrl?: string | null; // 작성자 프로필 이미지 URL (선택)
+  imageUrls?: string[] | null; // 첨부 이미지 URL 배열 (선택)
   isLiked: boolean;
   onToggleLike: (e: React.MouseEvent, postId: string) => void;
   onCategoryClick: (e: React.MouseEvent, category: string) => void;
@@ -73,6 +76,7 @@ export default function PostCard({
   createdAt,
   authorNickname,
   authorAvatarUrl,
+  imageUrls,
   isLiked,
   onToggleLike,
   onCategoryClick,
@@ -84,9 +88,11 @@ export default function PostCard({
         <div className="flex items-center gap-2 text-xs">
           {/* 작성자 아바타 (이미지 또는 이니셜) */}
           {authorAvatarUrl ? (
-            <img
+            <Image
               src={authorAvatarUrl}
               alt={authorNickname}
+              width={20}
+              height={20}
               className="h-5 w-5 rounded-full object-cover"
             />
           ) : (
@@ -108,7 +114,7 @@ export default function PostCard({
         </div>
       </div>
 
-      {/* 중앙: 제목 + 내용 미리보기 */}
+      {/* 중앙: 제목 + 내용 미리보기 + 이미지 썸네일 */}
       <div className="px-4 pt-1.5 pb-2">
         <h3 className="mb-1 text-[15px] font-semibold leading-snug text-foreground">
           {title}
@@ -116,6 +122,48 @@ export default function PostCard({
         <p className="line-clamp-2 text-sm leading-relaxed text-muted">
           {content}
         </p>
+
+        {/* ─── 첨부 이미지 썸네일 (Next.js Image 컴포넌트) ─── */}
+        {/* 이미지 1장: 전체 너비 aspect-video */}
+        {/* 이미지 2장: 반반 분할 */}
+        {/* 이미지 3장+: 3등분 + 나머지 개수 오버레이 */}
+        {imageUrls && imageUrls.length > 0 && (
+          <div className="mt-2 flex gap-1.5 overflow-hidden rounded-lg">
+            {imageUrls.slice(0, 3).map((url, idx) => (
+              <div
+                key={idx}
+                className={`relative overflow-hidden rounded-md bg-hover-bg ${
+                  imageUrls.length === 1
+                    ? "aspect-video w-full"
+                    : imageUrls.length === 2
+                      ? "h-32 w-1/2"
+                      : "h-28 w-1/3"
+                }`}
+              >
+                <Image
+                  src={url}
+                  alt={`첨부 이미지 ${idx + 1}`}
+                  fill
+                  sizes={
+                    imageUrls.length === 1
+                      ? "100vw"
+                      : imageUrls.length === 2
+                        ? "50vw"
+                        : "33vw"
+                  }
+                  className="object-cover"
+                  loading="lazy"
+                />
+                {/* 3장 이상일 때 마지막 썸네일에 +N 오버레이 */}
+                {idx === 2 && imageUrls.length > 3 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm font-bold text-white">
+                    +{imageUrls.length - 3}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 하단: 레딧 스타일 인터랙션 바 */}

@@ -4,12 +4,14 @@
 // 브랜드: 형광 그린 #73e346 계열
 // M11: 게시글 작성자 + 댓글 작성자 프로필 이미지 표시
 // M12: 작성자 본인만 수정/삭제 버튼 표시 + 삭제 로직
+// M13: 이미지 갤러리를 Next.js <Image> 컴포넌트로 교체 (fill + object-contain)
 
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase } from "@/utils/supabase/client";
 import {
   ArrowBigUp,
@@ -42,6 +44,7 @@ type PostDetail = {
   comment_count: number;
   created_at: string;
   author_id: string;
+  image_urls: string[] | null; // 첨부 이미지 URL 배열
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
@@ -141,7 +144,7 @@ export default function PostDetailClient() {
     const { data } = await supabase
       .from("posts")
       .select(
-        `id, title, content, category, upvotes, comment_count, created_at, author_id,
+        `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
          profiles ( nickname, avatar_url )`
       )
       .eq("id", postId)
@@ -534,9 +537,11 @@ export default function PostDetailClient() {
           <div className="mb-3 flex items-center gap-2 text-xs">
             {/* 게시글 작성자 아바타 */}
             {postAuthorAvatarUrl ? (
-              <img
+              <Image
                 src={postAuthorAvatarUrl}
                 alt={postAuthorNickname}
+                width={24}
+                height={24}
                 className="h-6 w-6 rounded-full object-cover"
               />
             ) : (
@@ -614,6 +619,29 @@ export default function PostDetailClient() {
           <div className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
             {post.content}
           </div>
+
+          {/* ─── 첨부 이미지 갤러리 (Next.js Image, fill + object-contain) ─── */}
+          {/* 각 이미지를 w-full max-w-3xl로 꽉 채우되, 원본 비율 유지 */}
+          {post.image_urls && post.image_urls.length > 0 && (
+            <div className="mb-5 space-y-3">
+              {post.image_urls.map((url, idx) => (
+                <div
+                  key={idx}
+                  className="relative w-full overflow-hidden rounded-lg bg-hover-bg"
+                  style={{ maxHeight: "500px", aspectRatio: "16/9" }}
+                >
+                  <Image
+                    src={url}
+                    alt={`첨부 이미지 ${idx + 1}`}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 768px"
+                    className="object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* 하단 인터랙션 바 (레딧 스타일 필 버튼) */}
           <div className="flex items-center gap-2 border-t border-border-color pt-3">
@@ -704,9 +732,11 @@ export default function PostDetailClient() {
             <div className="flex gap-3">
               {/* 유저 아바타 (프로필 이미지 또는 이니셜) */}
               {myAvatarUrl ? (
-                <img
+                <Image
                   src={myAvatarUrl}
                   alt="내 프로필"
+                  width={32}
+                  height={32}
                   className="h-8 w-8 shrink-0 rounded-full object-cover"
                 />
               ) : (
@@ -775,9 +805,11 @@ export default function PostDetailClient() {
                 >
                   {/* 댓글 작성자 아바타 (이미지 또는 이니셜) */}
                   {commentAvatarUrl ? (
-                    <img
+                    <Image
                       src={commentAvatarUrl}
                       alt={commentNickname}
+                      width={28}
+                      height={28}
                       className="h-7 w-7 shrink-0 rounded-full object-cover"
                     />
                   ) : (
