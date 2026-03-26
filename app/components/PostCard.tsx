@@ -8,12 +8,15 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import {
   ArrowBigUp,
   ArrowBigDown,
   MessageCircle,
   Share2,
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 // ─── Props 타입 정의 ───
@@ -64,6 +67,108 @@ function formatCount(count: number): string {
   if (count >= 10000) return `${(count / 10000).toFixed(1)}만`;
   if (count >= 1000) return `${(count / 1000).toFixed(1)}천`;
   return String(count);
+}
+
+// ─── 레딧 스타일 이미지 슬라이더 컴포넌트 ───
+// 블러 배경 위에 원본 비율 이미지를 센터 정렬로 표시
+// 여러 장이면 좌우 화살표 + 도트 인디케이터로 슬라이드
+function ImageSlider({ imageUrls }: { imageUrls?: string[] | null }) {
+  // 슬라이더 현재 인덱스 상태
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  // 이미지가 없으면 아무것도 렌더링하지 않음
+  if (!imageUrls || imageUrls.length === 0) return null;
+
+  const total = imageUrls.length;
+  const currentUrl = imageUrls[currentIdx];
+
+  // 이전 이미지로 이동 (루핑: 첫 번째 → 마지막)
+  const goPrev = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCurrentIdx((prev) => (prev === 0 ? total - 1 : prev - 1));
+  };
+
+  // 다음 이미지로 이동 (루핑: 마지막 → 첫 번째)
+  const goNext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCurrentIdx((prev) => (prev === total - 1 ? 0 : prev + 1));
+  };
+
+  return (
+    <div className="relative mt-2 aspect-[4/3] w-full overflow-hidden rounded-lg bg-black">
+      {/* 레이어 1: 블러 배경 이미지 (같은 이미지를 확대+블러 처리) */}
+      <Image
+        src={currentUrl}
+        alt="배경 블러"
+        fill
+        sizes="100vw"
+        className="object-cover scale-110 blur-2xl opacity-40"
+        loading="lazy"
+        priority={false}
+      />
+
+      {/* 레이어 2: 전경 이미지 (원본 비율 유지, 중앙 정렬) */}
+      <Image
+        src={currentUrl}
+        alt={`첨부 이미지 ${currentIdx + 1}`}
+        fill
+        sizes="100vw"
+        className="object-contain object-center z-10"
+        loading="lazy"
+        priority={false}
+      />
+
+      {/* 여러 장일 때만 슬라이더 UI 표시 */}
+      {total > 1 && (
+        <>
+          {/* 좌측 화살표 버튼 */}
+          <button
+            onClick={goPrev}
+            className="absolute left-2 top-1/2 z-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/90 backdrop-blur-sm transition-all hover:bg-black/70 hover:scale-110"
+            aria-label="이전 이미지"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+
+          {/* 우측 화살표 버튼 */}
+          <button
+            onClick={goNext}
+            className="absolute right-2 top-1/2 z-20 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/90 backdrop-blur-sm transition-all hover:bg-black/70 hover:scale-110"
+            aria-label="다음 이미지"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+
+          {/* 하단 도트 인디케이터 */}
+          <div className="absolute bottom-2.5 left-1/2 z-20 -translate-x-1/2 flex items-center gap-1.5">
+            {imageUrls.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCurrentIdx(idx);
+                }}
+                className={`h-1.5 rounded-full transition-all ${
+                  idx === currentIdx
+                    ? "w-4 bg-primary"       // 현재 이미지: 형광 그린 + 넓은 바
+                    : "w-1.5 bg-white/50 hover:bg-white/80"  // 다른 이미지: 작은 점
+                }`}
+                aria-label={`이미지 ${idx + 1}번으로 이동`}
+              />
+            ))}
+          </div>
+
+          {/* 우상단 이미지 카운터 뱃지 (예: 2/5) */}
+          <span className="absolute top-2.5 right-2.5 z-20 rounded-full bg-black/60 px-2 py-0.5 text-xs font-medium text-white/90 backdrop-blur-sm">
+            {currentIdx + 1}/{total}
+          </span>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function PostCard({
@@ -123,47 +228,10 @@ export default function PostCard({
           {content}
         </p>
 
-        {/* ─── 첨부 이미지 썸네일 (Next.js Image 컴포넌트) ─── */}
-        {/* 이미지 1장: 전체 너비 aspect-video */}
-        {/* 이미지 2장: 반반 분할 */}
-        {/* 이미지 3장+: 3등분 + 나머지 개수 오버레이 */}
-        {imageUrls && imageUrls.length > 0 && (
-          <div className="mt-2 flex gap-1.5 overflow-hidden rounded-lg">
-            {imageUrls.slice(0, 3).map((url, idx) => (
-              <div
-                key={idx}
-                className={`relative overflow-hidden rounded-md bg-hover-bg ${
-                  imageUrls.length === 1
-                    ? "aspect-video w-full"
-                    : imageUrls.length === 2
-                      ? "h-32 w-1/2"
-                      : "h-28 w-1/3"
-                }`}
-              >
-                <Image
-                  src={url}
-                  alt={`첨부 이미지 ${idx + 1}`}
-                  fill
-                  sizes={
-                    imageUrls.length === 1
-                      ? "100vw"
-                      : imageUrls.length === 2
-                        ? "50vw"
-                        : "33vw"
-                  }
-                  className="object-cover"
-                  loading="lazy"
-                />
-                {/* 3장 이상일 때 마지막 썸네일에 +N 오버레이 */}
-                {idx === 2 && imageUrls.length > 3 && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-sm font-bold text-white">
-                    +{imageUrls.length - 3}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        {/* ─── 레딧 스타일 이미지 슬라이더 ─── */}
+        {/* 고정 비율 컨테이너 (4:3) + 블러 배경 + 센터 이미지 */}
+        {/* 여러 장일 때: 좌우 화살표 + 하단 도트 인디케이터 */}
+        <ImageSlider imageUrls={imageUrls} />
       </div>
 
       {/* 하단: 레딧 스타일 인터랙션 바 */}
