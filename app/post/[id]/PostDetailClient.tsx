@@ -26,6 +26,9 @@ import {
   Trash2,
   Pencil,
   MoreHorizontal,
+  Crown,
+  Flame,
+  FileText,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -45,6 +48,7 @@ type PostDetail = {
   created_at: string;
   author_id: string;
   image_urls: string[] | null; // 첨부 이미지 URL 배열
+  is_featured: boolean; // 메인 배너 노출 여부
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
@@ -139,12 +143,18 @@ export default function PostDetailClient() {
   // shareToast: 공유 링크 복사 완료 토스트 메시지 표시 여부
   const [shareToast, setShareToast] = useState(false);
 
+  // ─── VIP 관리 도구 관련 상태 ───
+  // isVip: 현재 로그인한 유저가 VIP인지 여부
+  const [isVip, setIsVip] = useState(false);
+  // VIP 액션 로딩 상태 (칼럼 승격 / 배너 토글 중)
+  const [vipActionLoading, setVipActionLoading] = useState(false);
+
   // ─── 게시글 불러오기 ───
   const fetchPost = useCallback(async () => {
     const { data } = await supabase
       .from("posts")
       .select(
-        `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
+        `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls, is_featured,
          profiles ( nickname, avatar_url )`
       )
       .eq("id", postId)
@@ -211,15 +221,19 @@ export default function PostDetailClient() {
           checkMySave(session.user.id),
         ]);
 
-        // 내 프로필 아바타 가져오기 (댓글 입력 영역 표시용)
+        // 내 프로필 아바타 + VIP 여부 가져오기
         const { data: myProfile } = await supabase
           .from("profiles")
-          .select("avatar_url")
+          .select("avatar_url, is_vip")
           .eq("id", session.user.id)
           .single();
 
         if (myProfile?.avatar_url) {
           setMyAvatarUrl(myProfile.avatar_url);
+        }
+        // VIP 여부 설정 (VIP 관리 도구 표시에 사용)
+        if (myProfile?.is_vip) {
+          setIsVip(true);
         }
       }
 
@@ -433,6 +447,66 @@ export default function PostDetailClient() {
     } finally {
       setEditCommentSaving(false);
     }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // VIP 관리 도구: 칼럼 승격 핸들러
+  // 해당 게시글의 category를 '칼럼'으로 변경
+  // ═══════════════════════════════════════════════════════
+  const handlePromoteToColumn = async () => {
+    if (!user || !post || !isVip) return;
+
+    // 이미 칼럼이면 안내
+    if (post.category === "칼럼") {
+      alert("이미 '칼럼' 카테고리입니다.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `이 게시글을 '칼럼'으로 승격하시겠습니까?\n(현재 카테고리: ${post.category} → 칼럼)`
+    );
+    if (!confirmed) return;
+
+    setVipActionLoading(true);
+    const { error } = await supabase
+      .from("posts")
+      .update({ category: "칼럼" })
+      .eq("id", post.id);
+
+    if (error) {
+      alert("칼럼 승격에 실패했습니다: " + error.message);
+    } else {
+      // 로컬 상태 업데이트 (새로고침 없이 즉시 반영)
+      setPost((prev) => (prev ? { ...prev, category: "칼럼" } : prev));
+    }
+    setVipActionLoading(false);
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // VIP 관리 도구: 메인 배너 노출 토글 핸들러
+  // is_featured 값을 true/false로 전환
+  // ═══════════════════════════════════════════════════════
+  const handleToggleFeatured = async () => {
+    if (!user || !post || !isVip) return;
+
+    const newValue = !post.is_featured;
+    const action = newValue ? "메인 배너에 노출" : "메인 배너에서 제거";
+    const confirmed = window.confirm(`이 게시글을 ${action}하시겠습니까?`);
+    if (!confirmed) return;
+
+    setVipActionLoading(true);
+    const { error } = await supabase
+      .from("posts")
+      .update({ is_featured: newValue })
+      .eq("id", post.id);
+
+    if (error) {
+      alert(`${action}에 실패했습니다: ` + error.message);
+    } else {
+      // 로컬 상태 업데이트 (새로고침 없이 즉시 반영)
+      setPost((prev) => (prev ? { ...prev, is_featured: newValue } : prev));
+    }
+    setVipActionLoading(false);
   };
 
   // ═══════════════════════════════════════════════════════
@@ -712,6 +786,53 @@ export default function PostDetailClient() {
           )}
         </div>
       </article>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* VIP 관리 도구 (VIP 유저에게만 표시)            */}
+      {/* ═══════════════════════════════════════════ */}
+      {isVip && post && (
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-amber-400 mb-3">
+            <Crown className="h-4 w-4" />
+            VIP 관리 도구
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {/* 칼럼으로 승격 버튼 */}
+            <button
+              onClick={handlePromoteToColumn}
+              disabled={vipActionLoading || post.category === "칼럼"}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                post.category === "칼럼"
+                  ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                  : "bg-purple-600 text-white hover:bg-purple-700"
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              {post.category === "칼럼" ? "이미 칼럼입니다" : "💎 칼럼으로 승격"}
+            </button>
+
+            {/* 메인 배너 노출 토글 버튼 */}
+            <button
+              onClick={handleToggleFeatured}
+              disabled={vipActionLoading}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                post.is_featured
+                  ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
+                  : "bg-orange-600 text-white hover:bg-orange-700"
+              }`}
+            >
+              <Flame className="h-4 w-4" />
+              {post.is_featured ? "🔥 배너에서 제거" : "🔥 메인 배너 노출"}
+            </button>
+          </div>
+
+          {/* 현재 상태 안내 */}
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted">
+            <span>카테고리: <span className="text-foreground font-medium">{post.category}</span></span>
+            <span>배너 노출: <span className={post.is_featured ? "text-primary font-medium" : "text-muted"}>{post.is_featured ? "ON" : "OFF"}</span></span>
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════ */}
       {/* 댓글 섹션 (다크 테마)                        */}

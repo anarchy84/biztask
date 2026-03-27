@@ -166,6 +166,8 @@ function Home() {
   // slug 중복 체크 관련 상태
   const [slugError, setSlugError] = useState("");
   const [slugChecking, setSlugChecking] = useState(false);
+  // 커뮤니티 생성 성공 토스트 표시 여부
+  const [comSuccessToast, setComSuccessToast] = useState(false);
 
   // ─── 게시글 목록 불러오기 ───
   const fetchPosts = useCallback(
@@ -235,11 +237,15 @@ function Home() {
 
   // ─── 커뮤니티 목록 불러오기 (communities 테이블) ───
   const fetchCommunities = useCallback(async () => {
-    const { data } = await supabase
+    // is_active 컬럼이 아직 DB에 없을 수 있으므로 필터 없이 전체 조회
+    // (is_active 컬럼 추가 후 .eq("is_active", true) 복구 가능)
+    const { data, error } = await supabase
       .from("communities")
       .select("id, name, slug, description, member_count, icon_url")
-      .eq("is_active", true)
       .order("member_count", { ascending: false });
+    if (error) {
+      console.error("[fetchCommunities] 조회 실패:", error);
+    }
     if (data) setCommunities(data as Community[]);
   }, []);
 
@@ -312,47 +318,102 @@ function Home() {
   };
 
   // ─── VIP 전용: 새 커뮤니티 생성 ───
+  // try-catch로 네트워크 에러까지 완전 커버
+  // 성공 시 토스트 알림 + 사이드바 갱신 + 모달 닫기
+  // 모든 에러 경로에 [코드 + 메시지]를 표시하여 디버깅 가능하게 함
   const handleCreateCommunity = async () => {
     if (!newComName.trim() || !user) return;
     // slug 중복 에러가 있으면 생성 차단
     if (slugError) return;
     setComCreating(true);
 
-    // slug 자동 생성: 한글은 그대로, 공백은 하이픈으로
-    let slug = newComSlug.trim() || newComName.trim().toLowerCase().replace(/\s+/g, "-");
+    try {
+      // slug 자동 생성: 한글은 그대로, 공백은 하이픈으로
+      const slug = newComSlug.trim() || newComName.trim().toLowerCase().replace(/\s+/g, "-");
 
-    const { error } = await supabase.from("communities").insert({
-      name: newComName.trim(),
-      slug,
-      description: newComDesc.trim() || null,
-      created_by: user.id,
-    });
+      // 디버깅용: 콘솔에 요청 데이터 출력
+      console.log("[커뮤니티 생성] 요청:", { name: newComName.trim(), slug, user: user.id });
 
-    if (error) {
-      // slug 중복 에러인 경우: 랜덤 숫자 4자리를 붙여서 자동 재시도
-      if (error.message.includes("communities_slug_key") || error.code === "23505") {
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000); // 1000~9999
-        const retrySlug = `${slug}-${randomSuffix}`;
-        const { error: retryError } = await supabase.from("communities").insert({
-          name: newComName.trim(),
-          slug: retrySlug,
-          description: newComDesc.trim() || null,
-          created_by: user.id,
-        });
-        if (retryError) {
-          alert("커뮤니티 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      const { data, error } = await supabase.from("communities").insert({
+        name: newComName.trim(),
+        slug,
+        description: newComDesc.trim() || null,
+        created_by: user.id,
+      }).select();
+
+      // 디버깅용: 응답 전체 출력
+      console.log("[커뮤니티 생성] 응답:", { data, error });
+
+      // ⚠️ Supabase RLS 차단 시 error=null인데 data가 빈 배열인 경우가 있음
+      // .select()를 호출했으므로 성공하면 data에 1개 이상의 row가 있어야 함
+      if (!error && (!data || (Array.isArray(data) && data.length === 0))) {
+        console.error("[커뮤니티 생성] RLS 차단 의심: error는 null인데 data가 비어있음", { data, error });
+        alert("⛔ 커뮤니티 생성이 차단되었습니다.\n\n가능한 원인:\n1. VIP 권한이 없음 (profiles.is_vip = false)\n2. RLS INSERT 정책이 누락됨\n\nSupabase 대시보드에서 communities 테이블의\nRLS 정책을 확인해 주세요.");
+        setComCreating(false);
+        return;
+      }
+
+      if (error) {
+        // 에러 유형 판별 (message 기반으로 정밀 분류)
+        const errMsg = error.message || "";
+        const errCode = error.code || "";
+        const isSlugDuplicate = errMsg.includes("communities_slug_key");
+        const isNameDuplicate = errMsg.includes("communities_name_key");
+        const isUniqueViolation = errCode === "23505"; // 어떤 UNIQUE든 위반
+        const isRlsError = errMsg.includes("row-level security") || errMsg.includes("policy") || errCode === "42501" || errCode === "42P01";
+        // Supabase가 RLS 차단 시 빈 응답을 줄 수도 있음 (data=null, error=null이 아닌 경우)
+
+        console.log("[커뮤니티 생성] 에러 분류:", { errMsg, errCode, isSlugDuplicate, isNameDuplicate, isUniqueViolation, isRlsError });
+
+        if (isNameDuplicate) {
+          // ── 이름 중복 에러 (communities.name UNIQUE 제약조건) ──
+          alert("이미 같은 이름의 커뮤니티가 존재합니다.\n다른 이름을 입력해 주세요.");
+        } else if (isSlugDuplicate || (isUniqueViolation && !isNameDuplicate)) {
+          // ── slug 중복 에러 → 랜덤 숫자 4자리 붙여서 1회 재시도 ──
+          const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+          const retrySlug = `${slug}-${randomSuffix}`;
+          console.log("[커뮤니티 생성] slug 중복 → 재시도:", retrySlug);
+
+          const { error: retryError } = await supabase.from("communities").insert({
+            name: newComName.trim(),
+            slug: retrySlug,
+            description: newComDesc.trim() || null,
+            created_by: user.id,
+          });
+
+          if (retryError) {
+            console.error("[커뮤니티 생성] 재시도 실패:", retryError);
+            alert(`커뮤니티 생성에 실패했습니다.\n\n[에러 코드] ${retryError.code || "없음"}\n[원인] ${retryError.message}`);
+          } else {
+            // 재시도 성공!
+            await fetchCommunities();
+            closeAllModals();
+            setComSuccessToast(true);
+            setTimeout(() => setComSuccessToast(false), 3000);
+          }
+        } else if (isRlsError) {
+          // ── RLS 권한 에러 ──
+          alert("⛔ 권한이 없습니다.\nVIP 회원만 커뮤니티를 생성할 수 있습니다.\n\n관리자에게 VIP 권한을 요청해 주세요.");
         } else {
-          await fetchCommunities();
-          closeAllModals();
+          // ── 기타 에러: 코드 + 메시지 전부 표시 ──
+          alert(`커뮤니티 생성에 실패했습니다.\n\n[에러 코드] ${errCode || "없음"}\n[원인] ${errMsg}\n\n이 메시지를 캡처해서 공유해 주세요.`);
         }
       } else {
-        alert("커뮤니티 생성에 실패했습니다: " + error.message);
+        // ✅ 성공: 사이드바 갱신 → 모달 닫기 → 성공 토스트 표시
+        await fetchCommunities();
+        closeAllModals();
+        setComSuccessToast(true);
+        setTimeout(() => setComSuccessToast(false), 3000);
       }
-    } else {
-      await fetchCommunities();
-      closeAllModals();
+    } catch (err) {
+      // 네트워크 에러 등 예상치 못한 오류
+      console.error("[커뮤니티 생성] 예외:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`네트워크 오류가 발생했습니다.\n인터넷 연결을 확인하고 다시 시도해 주세요.\n\n[상세] ${message}`);
+    } finally {
+      // 어떤 경우든 로딩 상태 해제
+      setComCreating(false);
     }
-    setComCreating(false);
   };
 
   // ─── 모달 닫기 + 입력 초기화 ───
@@ -1070,6 +1131,18 @@ function Home() {
                 ) : "커뮤니티 만들기"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* 커뮤니티 생성 성공 토스트 (화면 하단 중앙)     */}
+      {/* ═══════════════════════════════════════════ */}
+      {comSuccessToast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-bounce">
+          <div className="flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-black shadow-2xl">
+            <Users className="h-4 w-4" />
+            커뮤니티가 성공적으로 생성되었습니다! 🎉
           </div>
         </div>
       )}

@@ -1,7 +1,7 @@
 // 파일 위치: app/components/FeaturedSlider.tsx
 // 용도: 메인 피드 상단 가로 슬라이딩 배너 (BizTask 다크 테마)
-// 데이터: Supabase featured_posts 테이블에서 동적으로 불러옴
-// 관리: /admin/featured 페이지에서 게시글 추가/삭제/순서변경
+// 데이터: Supabase posts 테이블에서 is_featured = true인 게시글을 최신순으로 불러옴
+// VIP가 게시글 상세에서 "메인 배너 노출" 버튼으로 직접 관리
 // 규격: 카드 너비 min 240px / max 380px / gap-3 통일, aspect-[16/10]
 // 브랜드: 형광 그린 #73e346 계열
 
@@ -20,31 +20,28 @@ function getCategoryBadgeColor(category: string): string {
     마케팅: "bg-purple-600",
     커리어: "bg-cyan-500",
     자유: "bg-amber-500",
+    칼럼: "bg-indigo-600",
   };
   return colorMap[category] || "bg-gray-500";
 }
 
-// ─── Supabase JOIN 결과의 posts 필드 타입 ───
-type PostInfo = {
+// ─── Featured 게시글 타입 (posts 테이블에서 직접 조회) ───
+type FeaturedPost = {
   id: string;
   title: string;
   category: string;
   image_urls: string[] | null;
+  created_at: string;
+  profiles: { nickname: string } | { nickname: string }[] | null;
 };
 
-// ─── Featured 게시글 타입 (DB에서 JOIN하여 가져옴) ───
-// Supabase는 1:1 관계를 객체로, 1:N을 배열로 반환하므로 둘 다 허용
-type FeaturedItem = {
-  id: string; // featured_posts 테이블의 id
-  post_id: string;
-  posts: PostInfo | PostInfo[] | null;
-};
-
-// ─── posts 필드 추출 헬퍼 (Supabase JOIN이 객체 또는 배열로 반환될 수 있음) ───
-function getPostInfo(posts: PostInfo | PostInfo[] | null): PostInfo | null {
-  if (!posts) return null;
-  if (Array.isArray(posts)) return posts[0] || null;
-  return posts;
+// ─── 프로필 닉네임 추출 헬퍼 ───
+function getAuthorNickname(
+  profiles: { nickname: string } | { nickname: string }[] | null
+): string {
+  if (!profiles) return "익명";
+  if (Array.isArray(profiles)) return profiles[0]?.nickname || "익명";
+  return profiles.nickname || "익명";
 }
 
 export default function FeaturedSlider() {
@@ -54,25 +51,26 @@ export default function FeaturedSlider() {
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // ─── DB에서 불러온 Featured 아이템 목록 ───
-  const [items, setItems] = useState<FeaturedItem[]>([]);
+  // ─── DB에서 불러온 Featured 게시글 목록 ───
+  const [items, setItems] = useState<FeaturedPost[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ─── Featured 게시글 불러오기 (활성 상태만, 순서대로) ───
+  // ─── is_featured = true인 게시글을 최신순으로 불러오기 ───
   const fetchFeatured = useCallback(async () => {
+    // posts 테이블에서 is_featured가 true인 게시글만 조회
+    // 최신순으로 정렬하고 최대 10개까지만 표시
     const { data } = await supabase
-      .from("featured_posts")
+      .from("posts")
       .select(
-        `id, post_id,
-         posts ( id, title, category, image_urls )`
+        `id, title, category, image_urls, created_at,
+         profiles ( nickname )`
       )
-      .eq("is_active", true)
-      .order("display_order", { ascending: true });
+      .eq("is_featured", true)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     if (data) {
-      // posts가 null인 항목(삭제된 게시글 참조) 필터링
-      const valid = (data as FeaturedItem[]).filter((item) => item.posts !== null);
-      setItems(valid);
+      setItems(data as FeaturedPost[]);
     }
 
     setLoading(false);
@@ -178,14 +176,13 @@ export default function FeaturedSlider() {
             msOverflowStyle: "none",
           }}
         >
-          {items.map((item) => {
-            const post = getPostInfo(item.posts);
-            if (!post) return null;
+          {items.map((post) => {
             const hasImage = post.image_urls && post.image_urls.length > 0;
+            const authorName = getAuthorNickname(post.profiles);
 
             return (
               <button
-                key={item.id}
+                key={post.id}
                 onClick={() => router.push(`/post/${post.id}`)}
                 className="relative shrink-0 overflow-hidden rounded-xl border border-border-color text-left"
                 style={{
@@ -217,11 +214,16 @@ export default function FeaturedSlider() {
 
                   {/* 텍스트 콘텐츠 */}
                   <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
-                    <span
-                      className={`mb-1.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${getCategoryBadgeColor(post.category)}`}
-                    >
-                      {post.category}
-                    </span>
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold text-white ${getCategoryBadgeColor(post.category)}`}
+                      >
+                        {post.category}
+                      </span>
+                      <span className="text-[11px] text-white/70">
+                        {authorName}
+                      </span>
+                    </div>
                     <h3 className="text-sm font-bold leading-snug text-white drop-shadow-md sm:text-base">
                       {post.title}
                     </h3>
