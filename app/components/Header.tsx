@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
-import { Search, User, Bell, PenSquare, LogOut } from "lucide-react";
+import { Search, User, Bell, PenSquare, LogOut, Settings } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 export default function Header() {
@@ -18,6 +18,8 @@ export default function Header() {
   const [loading, setLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [nickname, setNickname] = useState<string>("");
+  // VIP 여부 (어드민 메뉴 표시용)
+  const [isVip, setIsVip] = useState(false);
 
   // 검색어 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,15 +43,17 @@ export default function Header() {
         setNickname(metadata?.nickname || "");
 
         // profiles 테이블에서도 최신 정보 가져오기 (metadata보다 정확)
+        // is_vip도 함께 조회하여 어드민 메뉴 표시 여부 결정
         const { data: profile } = await supabase
           .from("profiles")
-          .select("avatar_url, nickname")
+          .select("avatar_url, nickname, is_vip")
           .eq("id", currentUser.id)
           .single();
 
         if (profile) {
           if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
           if (profile.nickname) setNickname(profile.nickname);
+          if (profile.is_vip) setIsVip(true);
         }
       }
 
@@ -86,6 +90,7 @@ export default function Header() {
     setUser(null);
     setAvatarUrl(null);
     setNickname("");
+    setIsVip(false);
     router.push("/");
     router.refresh();
   };
@@ -161,6 +166,21 @@ export default function Header() {
               >
                 <Bell className="h-5 w-5" />
               </button>
+
+              {/* VIP 전용: 어드민 설정 버튼 — 일반 유저에게는 보이지 않음 */}
+              {isVip && (
+                <a
+                  href="/admin/sort"
+                  className="flex items-center gap-1.5 rounded-full border border-primary/30 px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
+                  aria-label="어드민 설정"
+                  title="순서 관리 (VIP 전용)"
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="hidden text-xs font-bold text-primary sm:inline">
+                    Admin
+                  </span>
+                </a>
+              )}
 
               {/* 유저 아바타 (프로필 이미지 또는 이니셜) */}
               <a
