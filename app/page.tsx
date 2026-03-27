@@ -245,14 +245,13 @@ function Home() {
 
   // ─── 커뮤니티 목록 불러오기 (communities 테이블) ───
   const fetchCommunities = useCallback(async () => {
-    // is_active 컬럼이 아직 DB에 없을 수 있으므로 필터 없이 전체 조회
-    // (is_active 컬럼 추가 후 .eq("is_active", true) 복구 가능)
+    // sort_order 오름차순으로 정렬 (관리자가 설정한 순서대로)
+    // sort_order가 같거나 0이면 member_count 내림차순으로 폴백
     const { data, error } = await supabase
       .from("communities")
       .select("id, name, slug, description, member_count, icon_url")
+      .order("sort_order", { ascending: true })
       .order("member_count", { ascending: false });
-    // 디버깅용 로그: 데이터와 에러를 콘솔에 바로 출력
-    console.log("불러온 커뮤니티 데이터:", data, error);
     if (error) {
       console.error("[fetchCommunities] 조회 실패:", error);
     }
