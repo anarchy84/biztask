@@ -8,7 +8,7 @@
 "use client";
 
 import { Suspense, useEffect, useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import FeaturedSlider from "@/app/components/FeaturedSlider";
@@ -30,6 +30,8 @@ import {
   Trash2,
   Users,
   Hash,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
@@ -135,6 +137,7 @@ export default function HomePage() {
 function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname(); // 현재 URL 경로 (사이드바 Active 판단용)
 
   const currentCategory = searchParams.get("category") || "";
   const currentSort = searchParams.get("sort") || "popular";
@@ -166,6 +169,11 @@ function Home() {
   // slug 중복 체크 관련 상태
   const [slugError, setSlugError] = useState("");
   const [slugChecking, setSlugChecking] = useState(false);
+
+  // ─── 사이드바 더보기/접기 상태 ───
+  // 카테고리와 커뮤니티 목록이 5개 초과 시 접어두기
+  const [showAllCategories, setShowAllCategories] = useState(false);
+  const [showAllCommunities, setShowAllCommunities] = useState(false);
   // 커뮤니티 생성 성공 토스트 표시 여부
   const [comSuccessToast, setComSuccessToast] = useState(false);
 
@@ -243,6 +251,8 @@ function Home() {
       .from("communities")
       .select("id, name, slug, description, member_count, icon_url")
       .order("member_count", { ascending: false });
+    // 디버깅용 로그: 데이터와 에러를 콘솔에 바로 출력
+    console.log("불러온 커뮤니티 데이터:", data, error);
     if (error) {
       console.error("[fetchCommunities] 조회 실패:", error);
     }
@@ -581,11 +591,17 @@ function Home() {
         <aside className="hidden lg:block">
           <div className="sticky top-16 space-y-1">
             {SIDEBAR_NAV.map((item) => {
-              // 현재 경로와 비교하여 활성 상태 판단
-              // "홈"은 카테고리 없는 루트("/")일 때 활성
-              const isActive =
-                (item.path === "/" && !currentCategory && currentSort === "popular") ||
-                (item.path === "/popular" && currentSort === "popular" && !currentCategory);
+              // ─── Active 판단 로직 (usePathname 기반) ───
+              // "홈"만 루트 경로 + 카테고리/정렬 파라미터 없을 때 활성
+              // 나머지는 pathname이 정확히 일치할 때만 활성
+              let isActive = false;
+              if (item.path === "/") {
+                // 홈: 루트 경로이고, 카테고리 필터나 정렬 변경이 없는 기본 상태
+                isActive = pathname === "/" && !currentCategory && currentSort === "popular";
+              } else {
+                // 인기, 칼럼, 뉴스, 둘러보기: URL 경로가 정확히 일치할 때
+                isActive = pathname === item.path;
+              }
 
               return (
                 <Link
@@ -594,7 +610,7 @@ function Home() {
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                     isActive
                       ? "bg-primary/15 text-primary font-semibold"
-                      : "text-foreground hover:bg-hover-bg"
+                      : "text-muted hover:bg-hover-bg hover:text-foreground"
                   }`}
                 >
                   <item.icon
@@ -624,8 +640,8 @@ function Home() {
               )}
             </div>
 
-            {/* DB에서 불러온 카테고리 목록 */}
-            {categories.map((cat) => {
+            {/* DB에서 불러온 카테고리 목록 (기본 5개, 더보기 클릭 시 전체) */}
+            {(showAllCategories ? categories : categories.slice(0, 5)).map((cat) => {
               const isActive = currentCategory === cat.name;
               return (
                 <div key={cat.id} className="group flex items-center">
@@ -666,6 +682,26 @@ function Home() {
               );
             })}
 
+            {/* 카테고리 6개 이상일 때 더보기/접기 토글 버튼 */}
+            {categories.length > 5 && (
+              <button
+                onClick={() => setShowAllCategories(!showAllCategories)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted transition-colors hover:bg-hover-bg hover:text-foreground"
+              >
+                {showAllCategories ? (
+                  <>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    접기
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    더보기 ({categories.length - 5}개)
+                  </>
+                )}
+              </button>
+            )}
+
             <div className="my-3 border-t border-border-color" />
 
             {/* ─── 커뮤니티 섹션 (레딧 서브레딧 스타일) ─── */}
@@ -685,11 +721,11 @@ function Home() {
               )}
             </div>
 
-            {/* 커뮤니티 목록 → 클릭 시 /community/[slug] 이동 */}
+            {/* 커뮤니티 목록 → 클릭 시 /community/[slug] 이동 (기본 5개) */}
             {communities.length === 0 ? (
               <p className="px-3 py-2 text-xs text-muted">아직 커뮤니티가 없습니다</p>
             ) : (
-              communities.map((com) => (
+              (showAllCommunities ? communities : communities.slice(0, 5)).map((com) => (
                 <Link
                   key={com.id}
                   href={`/community/${com.slug || com.id}`}
@@ -702,6 +738,26 @@ function Home() {
                   </div>
                 </Link>
               ))
+            )}
+
+            {/* 커뮤니티 6개 이상일 때 더보기/접기 토글 버튼 */}
+            {communities.length > 5 && (
+              <button
+                onClick={() => setShowAllCommunities(!showAllCommunities)}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted transition-colors hover:bg-hover-bg hover:text-foreground"
+              >
+                {showAllCommunities ? (
+                  <>
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    접기
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                    더보기 ({communities.length - 5}개)
+                  </>
+                )}
+              </button>
             )}
 
             {/* ─── VIP 크리에이터 라운지 (isVip일 때만) ─── */}
