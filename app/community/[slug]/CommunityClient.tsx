@@ -128,18 +128,33 @@ export default function CommunityClient({ slug }: { slug: string }) {
   const [editSaving, setEditSaving] = useState(false);
 
   // ─── 커뮤니티 정보 불러오기 ───
+  // slug 또는 id로 조회 (한글 slug 안전 처리)
+  // .or() 대신 .eq() 개별 호출로 특수문자/한글 slug에서도 안전하게 동작
   const fetchCommunity = useCallback(async () => {
-    // slug 또는 id로 조회
-    const { data } = await supabase
+    // 1차: slug로 조회
+    const { data: bySlug } = await supabase
       .from("communities")
       .select("id, name, slug, description, created_by, created_at, member_count, icon_url, banner_url")
-      .or(`slug.eq.${slug},id.eq.${slug}`)
-      .single();
+      .eq("slug", slug)
+      .maybeSingle();
 
-    if (data) {
-      setCommunity(data as CommunityInfo);
-      return data as CommunityInfo;
+    if (bySlug) {
+      setCommunity(bySlug as CommunityInfo);
+      return bySlug as CommunityInfo;
     }
+
+    // 2차: id로 폴백 조회 (slug가 없는 경우)
+    const { data: byId } = await supabase
+      .from("communities")
+      .select("id, name, slug, description, created_by, created_at, member_count, icon_url, banner_url")
+      .eq("id", slug)
+      .maybeSingle();
+
+    if (byId) {
+      setCommunity(byId as CommunityInfo);
+      return byId as CommunityInfo;
+    }
+
     return null;
   }, [slug]);
 

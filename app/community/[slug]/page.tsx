@@ -13,16 +13,32 @@ type Props = {
 };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  // URL 인코딩된 한글 slug를 원래 문자열로 복원
+  // 예: "%ED%85%8C%EC%8A%A4%ED%8A%B8" → "테스트"
+  const slug = decodeURIComponent(rawSlug);
 
   const supabase = createServerSupabaseClient();
 
-  // slug 또는 id로 커뮤니티 조회
-  const { data: community } = await supabase
+  // slug 또는 id로 커뮤니티 조회 (.eq 개별 체인으로 안전하게)
+  let community = null;
+  const { data: bySlug } = await supabase
     .from("communities")
     .select("name, description, member_count")
-    .or(`slug.eq.${slug},id.eq.${slug}`)
-    .single();
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (bySlug) {
+    community = bySlug;
+  } else {
+    // slug로 못 찾으면 id로 한번 더 시도 (폴백)
+    const { data: byId } = await supabase
+      .from("communities")
+      .select("name, description, member_count")
+      .eq("id", slug)
+      .maybeSingle();
+    community = byId;
+  }
 
   if (!community) {
     return {
@@ -48,6 +64,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // ─── 페이지 컴포넌트 ───
 export default async function CommunityPage({ params }: Props) {
-  const { slug } = await params;
+  const { slug: rawSlug } = await params;
+  // 한글 slug 디코딩 후 클라이언트 컴포넌트에 전달
+  const slug = decodeURIComponent(rawSlug);
   return <CommunityClient slug={slug} />;
 }

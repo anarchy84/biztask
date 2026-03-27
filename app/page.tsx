@@ -725,19 +725,24 @@ function Home() {
             {communities.length === 0 ? (
               <p className="px-3 py-2 text-xs text-muted">아직 커뮤니티가 없습니다</p>
             ) : (
-              (showAllCommunities ? communities : communities.slice(0, 5)).map((com) => (
-                <Link
-                  key={com.id}
-                  href={`/community/${com.slug || com.id}`}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-hover-bg hover:text-foreground"
-                >
-                  <Users className="h-4 w-4 shrink-0 text-primary/60" />
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate">{com.name}</span>
-                    <span className="text-[10px] text-muted">{com.member_count}명</span>
-                  </div>
-                </Link>
-              ))
+              (showAllCommunities ? communities : communities.slice(0, 5)).map((com) => {
+                // slug가 비어있거나 null이면 id로 폴백
+                // encodeURIComponent로 한글 slug도 안전하게 URL 변환
+                const communityPath = com.slug && com.slug.trim() ? com.slug : com.id;
+                return (
+                  <Link
+                    key={com.id}
+                    href={`/community/${encodeURIComponent(communityPath)}`}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted transition-colors hover:bg-hover-bg hover:text-foreground"
+                  >
+                    <Users className="h-4 w-4 shrink-0 text-primary/60" />
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate">{com.name}</span>
+                      <span className="text-[10px] text-muted">{com.member_count}명</span>
+                    </div>
+                  </Link>
+                );
+              })
             )}
 
             {/* 커뮤니티 6개 이상일 때 더보기/접기 토글 버튼 */}
