@@ -1,0 +1,3 @@
+module.exports=[88367,a=>{"use strict";var b=a.i(87924),c=a.i(72131),d=a.i(50944),e=a.i(96221);a.s(["default",0,function(){let a=(0,d.useRouter)();return(0,c.useEffect)(()=>{a.replace("/admin/sort")},[a]),(0,b.jsx)("div",{className:"flex items-center justify-center py-20",children:(0,b.jsx)(e.Loader2,{className:"h-6 w-6 animate-spin text-primary"})})}])}];
+
+//# sourceMappingURL=app_admin_page_tsx_0weq3nw._.js.map

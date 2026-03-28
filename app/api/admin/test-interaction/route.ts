@@ -28,7 +28,7 @@ interface Persona {
 }
 
 interface ActionResult {
-  action: string;       // "post" | "comment" | "upvote" | "setup"
+  action: string;       // "post" | "comment" | "reply" | "upvote" | "setup"
   persona: string;      // NPC 닉네임
   success: boolean;
   detail: string;       // 수행 내용 요약
@@ -61,20 +61,71 @@ const TEMPLATE_CONTENTS = [
   "요즘 {industry} 업계에서 핫한 키워드가 뭔지 아시나요?\n\n제가 보기에는 '자동화'와 '개인화'인 것 같습니다. 단순 반복 작업은 자동화하고, 고객한테는 맞춤형 경험을 제공하는 게 대세더라고요.\n\n{nickname}의 관점에서 정리해봤는데, 여러분 의견도 궁금합니다!",
 ];
 
-// ─── 템플릿 댓글 (AI 없을 때 사용) ───
+// ─── 템플릿 댓글 (AI 없을 때 사용) - 카테고리별 맥락 기반 ───
+const TEMPLATE_COMMENTS_BY_CATEGORY: Record<string, string[]> = {
+  "자유": [
+    "공감합니다! 저도 비슷한 경험을 했어요.",
+    "오 이런 관점은 처음이네요. 좋은 인사이트네요.",
+    "맞아요, 정말 공감되는 내용이에요.",
+    "이런 얘기 계속 들으면 좋겠습니다!",
+    "와 정말 흥미로운 관점입니다 🤔",
+  ],
+  "사업": [
+    "사업하시면서 이런 경험 정말 도움이 됩니다.",
+    "구체적인 팁 감사합니다! 바로 적용해봐야겠어요.",
+    "실제 사업가 분의 경험담이라 더 와닿네요.",
+    "이런 전략 저도 시도해봐야겠습니다.",
+    "사업 실전에서 배우는 게 최고죠. 좋은 글입니다!",
+  ],
+  "마케팅": [
+    "마케팅 관점에서 정말 좋은 지적입니다!",
+    "이 방법 우리 팀도 시도해보겠습니다.",
+    "요즘 마케팅 트렌드를 잘 정리해주셨네요.",
+    "데이터 기반 마케팅의 중요성 공감합니다.",
+    "이렇게 성과 내신 경험담 정말 귀하네요.",
+  ],
+  "커리어": [
+    "커리어 관점에서 정말 좋은 조언입니다.",
+    "저도 비슷한 고민을 하고 있었어요. 감사합니다!",
+    "현업자의 목소리라 더 신뢰가 가네요.",
+    "이런 경험담이 정말 필요했습니다.",
+    "커리어 선택에 큰 참고가 될 것 같습니다.",
+  ],
+  "이직": [
+    "이직 결정할 때 이런 정보가 정말 도움이 됩니다.",
+    "솔직한 조언 감사해요. 많은 분들이 도움받을 거예요.",
+    "이직 후 적응 과정이 있겠네요. 응원합니다!",
+    "현실적인 팁 정말 좋습니다.",
+    "이직 준비 중인데 정말 참고가 됩니다.",
+  ],
+  "재테크": [
+    "재테크 팁 정말 실용적이네요!",
+    "장기적 관점에서 정말 좋은 전략입니다.",
+    "이런 재테크 경험담 정말 귀합니다.",
+    "자산 관리 방법 좋은 아이디어 있으면 공유해주세요.",
+    "이 방법 저도 고려해봐야겠네요.",
+  ],
+  "트렌드": [
+    "최근 이 트렌드 정말 관심 받고 있더라고요.",
+    "시장 흐름을 잘 파악하신 것 같습니다.",
+    "이 부분은 앞으로 계속 중요할 것 같아요.",
+    "좋은 정보 감사합니다!",
+    "업계 전망에 대한 인사이트 정말 좋네요.",
+  ],
+};
+
+// ─── 폴백용 기본 템플릿 댓글 ───
 const TEMPLATE_COMMENTS = [
-  "좋은 글이네요! 저도 {industry} 분야에서 비슷한 경험을 했습니다.",
-  "공감합니다. 특히 요즘 시장 변화가 빠르다는 부분이 와닿네요.",
-  "유익한 정보 감사합니다! 참고하겠습니다 👍",
-  "오 이런 관점은 처음이네요. 좋은 인사이트 감사합니다.",
-  "맞아요, 기본기가 정말 중요하죠. 좋은 리마인더가 됐습니다.",
-  "실전 경험에서 나온 이야기라 더 와닿습니다.",
-  "저도 비슷한 생각이었는데 정리해주셔서 감사해요!",
-  "현업 종사자 분의 의견이라 신뢰가 갑니다. 응원합니다!",
-  "이 글 북마크 해둬야겠네요. 나중에 다시 읽어봐야지.",
-  "댓글 달고 갑니다. {industry} 쪽 이야기는 항상 흥미롭네요.",
-  "새로운 시각을 얻어갑니다. 좋은 글 감사해요!",
-  "구체적인 사례가 있어서 이해하기 쉬웠습니다.",
+  "좋은 글 감사해요! 많이 배워갑니다.",
+  "공감하는 부분이 많네요.",
+  "유익한 내용 정말 감사합니다!",
+  "좋은 관점이에요. 새로운 생각이 들었어요.",
+  "현장의 목소리라 더 와닿습니다.",
+  "이런 정보 계속 공유해주세요!",
+  "실전 경험이 담겨있어서 좋네요.",
+  "아 정말 공감돼요!",
+  "이것도 하나의 방법이군요. 감사합니다.",
+  "정말 도움이 되는 글입니다!",
 ];
 
 // ─── 유틸: 배열에서 랜덤 항목 뽑기 ───
@@ -257,18 +308,20 @@ export async function POST(request: NextRequest) {
     const anakiPosts = recentPosts?.filter((p) => p.author_id === anakiUserId) || [];
     const allPosts = recentPosts || [];
 
-    // ─── 액션 분배: 글쓰기 20%, 댓글 40%, 추천 40% ───
+    // ─── 액션 분배: 글쓰기 15%, 댓글 25%, 대댓글 20%, 추천 40% ───
     const actionCount = Math.min(actions, 20);
-    const postCount = Math.max(1, Math.round(actionCount * 0.2));
-    const commentCount = Math.max(1, Math.round(actionCount * 0.4));
-    const upvoteCount = Math.max(1, actionCount - postCount - commentCount);
+    const postCount = Math.max(1, Math.round(actionCount * 0.15));
+    const commentCount = Math.max(1, Math.round(actionCount * 0.25));
+    const replyCount = Math.max(1, Math.round(actionCount * 0.20));
+    const upvoteCount = Math.max(1, actionCount - postCount - commentCount - replyCount);
 
     // ─── 액션을 섞어서 자연스럽게 실행 ───
-    // (글쓰기만 몰아서 하지 않고, 댓글/추천을 섞어서)
-    type ActionItem = { type: "post" } | { type: "comment" } | { type: "upvote" };
+    // (글쓰기만 몰아서 하지 않고, 댓글/대댓글/추천을 섞어서)
+    type ActionItem = { type: "post" } | { type: "comment" } | { type: "reply" } | { type: "upvote" };
     const actionQueue: ActionItem[] = [];
     for (let i = 0; i < postCount; i++) actionQueue.push({ type: "post" });
     for (let i = 0; i < commentCount; i++) actionQueue.push({ type: "comment" });
+    for (let i = 0; i < replyCount; i++) actionQueue.push({ type: "reply" });
     for (let i = 0; i < upvoteCount; i++) actionQueue.push({ type: "upvote" });
 
     // 셔플 (Fisher-Yates)
@@ -363,6 +416,13 @@ export async function POST(request: NextRequest) {
         let commentText = "";
 
         if (useAI) {
+          // 대상 글의 본문도 가져오기 (맥락 기반 댓글)
+          const { data: postContent } = await supabase
+            .from("posts")
+            .select("content")
+            .eq("id", targetPost.id)
+            .single();
+
           const systemPrompt = persona.prompt ||
             `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
             `성격: ${persona.personality}. 자연스럽고 짧은 댓글을 작성하세요.`;
@@ -370,16 +430,28 @@ export async function POST(request: NextRequest) {
           const aiResult = await generateWithAI(
             effectiveApiKey,
             systemPrompt,
-            `'${targetPost.title}' 라는 제목의 글에 달 댓글을 한 줄로 작성해주세요.\n` +
+            `다음 글을 읽고 자연스러운 댓글을 작성해주세요.\n\n` +
+            `제목: ${targetPost.title}\n` +
             `카테고리: ${targetPost.category}\n` +
-            `50자 이내, 자연스럽고 공감하는 톤으로.`
+            `본문: ${(postContent?.content || '').slice(0, 300)}\n\n` +
+            `규칙:\n` +
+            `- 글 내용에 대한 구체적인 반응을 담을 것\n` +
+            `- 50~100자 이내\n` +
+            `- 이모지 사용 가능하지만 과하지 않게\n` +
+            `- 실제 커뮤니티 댓글처럼 자연스럽게\n` +
+            `- "좋은 글이네요" 같은 뻔한 말 금지`
           );
 
           if (aiResult) commentText = aiResult.trim();
         }
 
         if (!commentText) {
-          commentText = fillTemplate(pickRandom(TEMPLATE_COMMENTS), { industry: persona.industry, nickname: persona.nickname });
+          // 카테고리별 템플릿 댓글 선택
+          const categoryTemplates = TEMPLATE_COMMENTS_BY_CATEGORY[targetPost.category];
+          const templateList = categoryTemplates && categoryTemplates.length > 0
+            ? categoryTemplates
+            : TEMPLATE_COMMENTS;
+          commentText = pickRandom(templateList);
         }
 
         const { error: commentError } = await supabase
@@ -395,6 +467,86 @@ export async function POST(request: NextRequest) {
 
           await supabase.from("personas").update({ total_comments: (persona.total_comments ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
           results.push({ action: "comment", persona: persona.nickname, success: true, detail: `"${targetPost.title.slice(0, 15)}..." 에 댓글 완료` });
+        }
+
+      } else if (action.type === "reply") {
+        // ─── 대댓글 달기 ───
+        const availablePosts = [...allPosts, ...newPostIds];
+        if (availablePosts.length === 0) {
+          results.push({ action: "reply", persona: "-", success: false, detail: "대댓글 달 글이 없음" });
+          continue;
+        }
+
+        const persona = pickRandom(personas) as Persona;
+        const targetPost = anakiPosts.length > 0 && Math.random() < 0.5
+          ? pickRandom(anakiPosts)
+          : pickRandom(availablePosts);
+
+        // 해당 글의 기존 댓글 가져오기
+        const { data: existingComments } = await supabase
+          .from("comments")
+          .select("id, content, user_id")
+          .eq("post_id", targetPost.id)
+          .is("parent_id", null)
+          .limit(10);
+
+        if (!existingComments || existingComments.length === 0) {
+          // 댓글이 없으면 일반 댓글로 대체하지 않고 스킵
+          results.push({ action: "reply", persona: persona.nickname, success: false, detail: "대댓글 달 댓글이 없음 → 스킵" });
+          continue;
+        }
+
+        const parentComment = pickRandom(existingComments);
+
+        let replyText = "";
+        if (useAI) {
+          const systemPrompt = persona.prompt ||
+            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
+            `성격: ${persona.personality}. 자연스럽고 짧은 대댓글을 작성하세요.`;
+
+          const aiResult = await generateWithAI(
+            effectiveApiKey,
+            systemPrompt,
+            `다음 댓글에 대한 답글을 작성해주세요.\n\n` +
+            `원글 제목: ${targetPost.title}\n` +
+            `댓글: "${parentComment.content}"\n\n` +
+            `규칙:\n` +
+            `- 댓글 내용에 대한 구체적인 반응\n` +
+            `- 30~80자 이내\n` +
+            `- 동의, 반박, 추가 의견 등 다양하게\n` +
+            `- 실제 대댓글처럼 자연스럽게`
+          );
+          if (aiResult) replyText = aiResult.trim();
+        }
+
+        if (!replyText) {
+          // 템플릿 대댓글
+          const TEMPLATE_REPLIES = [
+            "맞아요, 저도 같은 생각이에요!",
+            "오 이런 관점은 처음이네요 👀",
+            "완전 공감합니다 ㅋㅋ",
+            "좀 다른 의견인데, 저는 다르게 생각해요",
+            "아 그렇군요! 배워갑니다",
+            "이거 정말 핵심 포인트네요",
+            "실제로 그렇더라고요!",
+            "좋은 지적입니다!",
+            "저도 경험해본 부분이에요.",
+            "정확한 지적입니다 👍",
+          ];
+          replyText = pickRandom(TEMPLATE_REPLIES);
+        }
+
+        const { error: replyError } = await supabase
+          .from("comments")
+          .insert({ post_id: targetPost.id, user_id: persona.user_id, content: replyText, parent_id: parentComment.id });
+
+        if (replyError) {
+          results.push({ action: "reply", persona: persona.nickname, success: false, detail: `대댓글 실패`, error: replyError.message });
+        } else {
+          const { data: currentPost } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
+          await supabase.from("posts").update({ comment_count: (currentPost?.comment_count ?? 0) + 1 }).eq("id", targetPost.id);
+          await supabase.from("personas").update({ total_comments: (persona.total_comments ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+          results.push({ action: "reply", persona: persona.nickname, success: true, detail: `"${targetPost.title.slice(0, 15)}..." 대댓글 완료` });
         }
 
       } else if (action.type === "upvote") {
@@ -454,6 +606,7 @@ export async function POST(request: NextRequest) {
       계정생성: results.filter((r) => r.action === "setup" && r.success).length,
       글쓰기: results.filter((r) => r.action === "post" && r.success).length,
       댓글: results.filter((r) => r.action === "comment" && r.success).length,
+      대댓글: results.filter((r) => r.action === "reply" && r.success).length,
       추천: results.filter((r) => r.action === "upvote" && r.success).length,
       AI사용: useAI,
     };

@@ -30,6 +30,7 @@ import {
   Flame,
   FileText,
   Drama,
+  CornerDownRight,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { useImpersonation } from "@/app/context/ImpersonationContext";
@@ -60,6 +61,7 @@ type Comment = {
   user_id: string;
   content: string;
   created_at: string;
+  parent_id: string | null;
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
 
@@ -128,6 +130,10 @@ export default function PostDetailClient() {
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentError, setCommentError] = useState("");
 
+  // 답글 관련 상태
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyingToNickname, setReplyingToNickname] = useState<string>("");
+
   // 게시글 삭제 관련 상태
   const [deleting, setDeleting] = useState(false);
 
@@ -173,7 +179,7 @@ export default function PostDetailClient() {
     const { data } = await supabase
       .from("comments")
       .select(
-        `id, post_id, user_id, content, created_at,
+        `id, post_id, user_id, content, created_at, parent_id,
          profiles ( nickname, avatar_url )`
       )
       .eq("post_id", postId)
@@ -371,6 +377,7 @@ export default function PostDetailClient() {
         post_id: postId,
         user_id: effectiveUserId,
         content: commentText.trim(),
+        parent_id: replyingTo || null,
       });
 
       if (insertError) {
@@ -388,12 +395,25 @@ export default function PostDetailClient() {
 
       // 입력창 초기화 + 댓글 & 게시글 새로고침
       setCommentText("");
+      setReplyingTo(null);
+      setReplyingToNickname("");
       await Promise.all([fetchComments(), fetchPost()]);
     } catch {
       setCommentError("네트워크 오류가 발생했습니다.");
     } finally {
       setCommentSubmitting(false);
     }
+  };
+
+  // ─── 답글 핸들러 ───
+  const handleReply = (commentId: string, nickname: string) => {
+    setReplyingTo(commentId);
+    setReplyingToNickname(nickname);
+  };
+
+  const cancelReply = () => {
+    setReplyingTo(null);
+    setReplyingToNickname("");
   };
 
   // ─── 댓글 삭제 핸들러 ───
@@ -867,6 +887,14 @@ export default function PostDetailClient() {
                 <span>&apos;{impersonating.nickname}&apos; 명의로 댓글을 작성합니다</span>
               </div>
             )}
+            {/* 답글 작성 중 안내 */}
+            {replyingTo && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 text-xs text-blue-300">
+                <CornerDownRight className="h-3.5 w-3.5 shrink-0" />
+                <span>&apos;{replyingToNickname}&apos;에게 답글 작성 중</span>
+                <button onClick={cancelReply} className="ml-auto text-blue-400 hover:text-blue-200">✕</button>
+              </div>
+            )}
             <div className="flex gap-3">
               {/* 유저 아바타 — 빙의 중이면 NPC 아바타 표시 */}
               {isImpersonating && impersonating ? (
@@ -940,110 +968,236 @@ export default function PostDetailClient() {
           </div>
         ) : (
           <div className="space-y-4">
-            {comments.map((comment) => {
-              const commentNickname = getAuthorNickname(comment.profiles);
-              const commentAvatarUrl = getAuthorAvatarUrl(comment.profiles);
+            {(() => {
+              // 부모 댓글과 답글 분리
+              const parentComments = comments.filter(c => !c.parent_id);
+              const getReplies = (parentId: string) => comments.filter(c => c.parent_id === parentId);
 
-              return (
-                <div
-                  key={comment.id}
-                  className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg"
-                >
-                  {/* 댓글 작성자 아바타 (이미지 또는 이니셜) */}
-                  {commentAvatarUrl ? (
-                    <Image
-                      src={commentAvatarUrl}
-                      alt={commentNickname}
-                      width={28}
-                      height={28}
-                      className="h-7 w-7 shrink-0 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
-                      {commentNickname.charAt(0)}
-                    </div>
-                  )}
+              return parentComments.map((comment) => {
+                const commentNickname = getAuthorNickname(comment.profiles);
+                const commentAvatarUrl = getAuthorAvatarUrl(comment.profiles);
+                const replies = getReplies(comment.id);
 
-                  {/* 댓글 내용 */}
-                  <div className="flex-1 min-w-0">
-                    {/* 작성자 + 시간 + 수정/삭제 버튼 */}
-                    <div className="mb-1 flex items-center gap-2 text-xs">
-                      <span className="font-medium text-foreground">
-                        {commentNickname}
-                      </span>
-                      <span className="text-muted">
-                        {timeAgo(comment.created_at)}
-                      </span>
-
-                      {/* 본인 댓글이면 수정/삭제 버튼 표시 */}
-                      {user && user.id === comment.user_id && editingCommentId !== comment.id && (
-                        <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                          {/* 수정 버튼 */}
-                          <button
-                            onClick={() => startEditComment(comment)}
-                            className="flex items-center gap-1 text-xs text-muted hover:text-primary"
-                            aria-label="댓글 수정"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            수정
-                          </button>
-                          {/* 삭제 버튼 */}
-                          <button
-                            onClick={() => handleDeleteComment(comment.id)}
-                            className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
-                            aria-label="댓글 삭제"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                            삭제
-                          </button>
+                return (
+                  <div key={comment.id}>
+                    {/* 부모 댓글 */}
+                    <div className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg">
+                      {/* 댓글 작성자 아바타 (이미지 또는 이니셜) */}
+                      {commentAvatarUrl ? (
+                        <Image
+                          src={commentAvatarUrl}
+                          alt={commentNickname}
+                          width={28}
+                          height={28}
+                          className="h-7 w-7 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
+                          {commentNickname.charAt(0)}
                         </div>
                       )}
+
+                      {/* 댓글 내용 */}
+                      <div className="flex-1 min-w-0">
+                        {/* 작성자 + 시간 + 수정/삭제/답글 버튼 */}
+                        <div className="mb-1 flex items-center gap-2 text-xs">
+                          <span className="font-medium text-foreground">
+                            {commentNickname}
+                          </span>
+                          <span className="text-muted">
+                            {timeAgo(comment.created_at)}
+                          </span>
+
+                          {/* 버튼들 (hover 시 표시) */}
+                          <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                            {/* 답글 버튼 */}
+                            <button
+                              onClick={() => handleReply(comment.id, commentNickname)}
+                              className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+                              aria-label="답글 작성"
+                            >
+                              <CornerDownRight className="h-3 w-3" />
+                              답글
+                            </button>
+                            {/* 본인 댓글이면 수정/삭제 버튼 표시 */}
+                            {user && user.id === comment.user_id && editingCommentId !== comment.id && (
+                              <>
+                                {/* 수정 버튼 */}
+                                <button
+                                  onClick={() => startEditComment(comment)}
+                                  className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+                                  aria-label="댓글 수정"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  수정
+                                </button>
+                                {/* 삭제 버튼 */}
+                                <button
+                                  onClick={() => handleDeleteComment(comment.id)}
+                                  className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
+                                  aria-label="댓글 삭제"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                  삭제
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ─── 댓글 본문 또는 인라인 수정 textarea ─── */}
+                        {editingCommentId === comment.id ? (
+                          // 수정 모드: textarea + 저장/취소 버튼
+                          <div className="mt-1">
+                            <textarea
+                              value={editCommentText}
+                              onChange={(e) => setEditCommentText(e.target.value)}
+                              rows={3}
+                              className="w-full resize-none rounded-lg border border-primary/50 bg-input-bg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                              autoFocus
+                            />
+                            <div className="mt-1.5 flex items-center gap-2">
+                              {/* 저장 버튼 */}
+                              <button
+                                onClick={() => saveEditComment(comment.id)}
+                                disabled={editCommentSaving || !editCommentText.trim()}
+                                className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-black hover:bg-primary-hover disabled:opacity-50"
+                              >
+                                {editCommentSaving ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Send className="h-3 w-3" />
+                                )}
+                                저장
+                              </button>
+                              {/* 취소 버튼 */}
+                              <button
+                                onClick={cancelEditComment}
+                                className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-hover-bg hover:text-foreground"
+                              >
+                                취소
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // 일반 모드: 댓글 본문 텍스트
+                          <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                            {comment.content}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* ─── 댓글 본문 또는 인라인 수정 textarea ─── */}
-                    {editingCommentId === comment.id ? (
-                      // 수정 모드: textarea + 저장/취소 버튼
-                      <div className="mt-1">
-                        <textarea
-                          value={editCommentText}
-                          onChange={(e) => setEditCommentText(e.target.value)}
-                          rows={3}
-                          className="w-full resize-none rounded-lg border border-primary/50 bg-input-bg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                          autoFocus
-                        />
-                        <div className="mt-1.5 flex items-center gap-2">
-                          {/* 저장 버튼 */}
-                          <button
-                            onClick={() => saveEditComment(comment.id)}
-                            disabled={editCommentSaving || !editCommentText.trim()}
-                            className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-black hover:bg-primary-hover disabled:opacity-50"
-                          >
-                            {editCommentSaving ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Send className="h-3 w-3" />
-                            )}
-                            저장
-                          </button>
-                          {/* 취소 버튼 */}
-                          <button
-                            onClick={cancelEditComment}
-                            className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-hover-bg hover:text-foreground"
-                          >
-                            취소
-                          </button>
-                        </div>
+                    {/* 답글 목록 (들여쓰기) */}
+                    {replies.length > 0 && (
+                      <div className="ml-10 mt-2 space-y-4 border-l border-border-color pl-4">
+                        {replies.map((reply) => {
+                          const replyNickname = getAuthorNickname(reply.profiles);
+                          const replyAvatarUrl = getAuthorAvatarUrl(reply.profiles);
+
+                          return (
+                            <div key={reply.id} className="group flex gap-3 rounded-lg p-2 hover:bg-hover-bg">
+                              {/* 답글 작성자 아바타 */}
+                              {replyAvatarUrl ? (
+                                <Image
+                                  src={replyAvatarUrl}
+                                  alt={replyNickname}
+                                  width={24}
+                                  height={24}
+                                  className="h-6 w-6 shrink-0 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-border-color text-foreground text-xs font-bold">
+                                  {replyNickname.charAt(0)}
+                                </div>
+                              )}
+
+                              {/* 답글 내용 */}
+                              <div className="flex-1 min-w-0">
+                                {/* 작성자 + 시간 + 수정/삭제 버튼 */}
+                                <div className="mb-1 flex items-center gap-2 text-xs">
+                                  <span className="font-medium text-foreground">
+                                    {replyNickname}
+                                  </span>
+                                  <span className="text-muted">
+                                    {timeAgo(reply.created_at)}
+                                  </span>
+
+                                  {/* 본인 답글이면 수정/삭제 버튼 표시 */}
+                                  {user && user.id === reply.user_id && editingCommentId !== reply.id && (
+                                    <div className="ml-auto flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                      {/* 수정 버튼 */}
+                                      <button
+                                        onClick={() => startEditComment(reply)}
+                                        className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+                                        aria-label="답글 수정"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                        수정
+                                      </button>
+                                      {/* 삭제 버튼 */}
+                                      <button
+                                        onClick={() => handleDeleteComment(reply.id)}
+                                        className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
+                                        aria-label="답글 삭제"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                        삭제
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* ─── 답글 본문 또는 인라인 수정 textarea ─── */}
+                                {editingCommentId === reply.id ? (
+                                  // 수정 모드: textarea + 저장/취소 버튼
+                                  <div className="mt-1">
+                                    <textarea
+                                      value={editCommentText}
+                                      onChange={(e) => setEditCommentText(e.target.value)}
+                                      rows={3}
+                                      className="w-full resize-none rounded-lg border border-primary/50 bg-input-bg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                      autoFocus
+                                    />
+                                    <div className="mt-1.5 flex items-center gap-2">
+                                      {/* 저장 버튼 */}
+                                      <button
+                                        onClick={() => saveEditComment(reply.id)}
+                                        disabled={editCommentSaving || !editCommentText.trim()}
+                                        className="flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-black hover:bg-primary-hover disabled:opacity-50"
+                                      >
+                                        {editCommentSaving ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Send className="h-3 w-3" />
+                                        )}
+                                        저장
+                                      </button>
+                                      {/* 취소 버튼 */}
+                                      <button
+                                        onClick={cancelEditComment}
+                                        className="rounded-md px-3 py-1.5 text-xs font-medium text-muted hover:bg-hover-bg hover:text-foreground"
+                                      >
+                                        취소
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  // 일반 모드: 답글 본문 텍스트
+                                  <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                                    {reply.content}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ) : (
-                      // 일반 모드: 댓글 본문 텍스트
-                      <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-                        {comment.content}
-                      </p>
                     )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         )}
       </div>
