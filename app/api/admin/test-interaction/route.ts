@@ -159,8 +159,30 @@ function randomDelay(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ─── AI 봇 탐지: 생성된 텍스트가 AI 냄새나는지 체크 ───
+// 봇 냄새 나는 패턴이 발견되면 true 반환 → 재생성 트리거
+function smellsLikeBot(text: string): boolean {
+  const botPatterns = [
+    /좋은 글이네요/,
+    /유익한 정보/,
+    /도움이 됩니다/,
+    /~에 대해 말씀/,
+    /결론적으로/,
+    /종합하면/,
+    /첫째.*둘째/,
+    /~하는 것이 중요/,
+    /~할 수 있습니다/,
+    /~라고 생각합니다/,
+    /공감합니다/,
+    /감사합니다.*정보/,
+    /추천드립니다/,
+    /이와 관련하여/,
+  ];
+  return botPatterns.some((p) => p.test(text));
+}
+
 // ─── AI 텍스트 생성 (Anthropic Claude API) ───
-// 실패 시 이유를 함께 반환하여 디버깅 가능
+// temperature 0.9로 창의적 생성 + 봇 탐지 시 1회 재생성
 async function generateWithAI(
   apiKey: string,
   systemPrompt: string,
@@ -170,15 +192,34 @@ async function generateWithAI(
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey });
 
+    // 1차 생성 (temperature 0.9 — 사람처럼 약간 헛소리도 하게)
     const message = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 500,
+      temperature: 0.9,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     });
 
     const textBlock = message.content.find((b) => b.type === "text");
-    return { text: textBlock ? textBlock.text : null };
+    const firstResult = textBlock ? textBlock.text : null;
+
+    // ─── 자체 검수: "이거 AI가 쓴 것 같은가?" ───
+    // 봇 패턴 발견 시 1회만 재생성 시도 (무한루프 방지)
+    if (firstResult && smellsLikeBot(firstResult)) {
+      console.warn(`[봇 탐지] AI 냄새 감지 → 재생성 시도`);
+      const retry = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
+        temperature: 1.0, // 재시도는 더 높은 temperature
+        system: systemPrompt + `\n\n[긴급] 방금 네가 쓴 글이 AI 티가 났다. 이번엔 진짜 사람처럼 써. 완전 다르게.`,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+      const retryBlock = retry.content.find((b) => b.type === "text");
+      if (retryBlock?.text) return { text: retryBlock.text };
+    }
+
+    return { text: firstResult };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("[AI 생성 실패]", errMsg);
@@ -267,23 +308,41 @@ async function ensureNpcUsers(
   return results;
 }
 
+// ─── 페르소나별 말투 가이드 (닉네임 → 강제 종결어미/말투) ───
+// DB prompt만으로 말투가 통일되는 문제 방지. 닉네임별 구체적 말투 예시 강제 주입
+const PERSONA_SPEECH_GUIDE: Record<string, string> = {
+  "식당왕김국자": `[말투 강제] 충청도 아재 말투로 써. 종결어미: "~하쇼", "~인겨", "~말여", "~했당께", "~아닌감?", "~그랬쥬". 존칭은 쓰되 투박하게. "허허" "에이~" "글쎄 말여" 자주 씀. ㅋㅋ 안 씀. 이모지 안 씀. 느끼한 말투 절대 금지. 예시: "아 그거 나도 해봤는데 말여, 쉽지가 않아유" "허허 그건 좀 아닌겨"`,
+  "광고충": `[말투 강제] 커뮤니티 MZ 말투. "ㅋㅋ", "ㄹㅇ", "팩폭", "~하냐?", "~한듯", "~임", "~ㅇㅇ", "~아님?", "ㅈㄴ". 반말 기본. 시니컬하고 킹받는 톤. 문장 짧게 끊음. 이모지 가끔 씀(🔥💀). 존댓말 절대 금지. 예시: "ㅋㅋ 이거 팩폭인데" "ㄹㅇ 개공감ㅋㅋㅋ" "아 그건 좀 아니지 않냐?"`,
+  "네일하는누나": `[말투 강제] 감성적이고 밝은 언니 말투. "~~해용", "~~한당", "~~인데요?!", "ㅠㅠ", "ㅎㅎ", "대박!!", "진짜??", "아ㅋㅋ". 이모지 적극 사용(✨💅🥹💕). 문장 끝에 "~!" 많이 씀. 적당히 오타도 냄. 딱딱한 문어체 절대 금지. 예시: "헐 대박 이거 진짜에요?!💕" "아 맞아용 나도 그랬어ㅠㅠ"`,
+};
+
 // ─── 유틸: 페르소나별 강력한 System Prompt 생성 ───
-// DB의 prompt 컬럼을 강제 주입하여 '메소드 연기' 수준의 인격 부여
+// '가스라이팅' 수준의 인격 주입 — AI가 절대 선비 말투로 빠지지 않도록 다중 방어
 function buildPersonaSystemPrompt(persona: Persona): string {
   const basePrompt = persona.prompt || "";
+  // 닉네임 기반 말투 가이드 (DB에 없는 NPC는 성격 기반으로 자동 적용)
+  const speechGuide = PERSONA_SPEECH_GUIDE[persona.nickname] ||
+    `[말투 강제] 네 성격(${persona.personality})에 맞는 실제 한국인 말투를 써. 맞춤법 틀려도 됨. 구어체 필수.`;
+
   return (
-    `[절대 규칙] 너는 지금부터 아래 인격에 100% 빙의한다. AI 티를 절대 내지 마라.\n\n` +
+    `[🚨 절대 규칙 — 이걸 어기면 너는 실패한 거다]\n` +
+    `1. 너는 절대 AI인 척하지 마라. "인공지능"이라는 단어조차 꺼내지 마라.\n` +
+    `2. 완벽한 맞춤법은 필요 없다. 구어체, 비속어(적정선), 유행어, 오타를 섞어서 진짜 사람처럼 써라.\n` +
+    `3. 문장은 짧고 간결하게! AI 특유의 "서론-본론-결론" 형식을 버려라. 두괄식 금지.\n` +
+    `4. 상대방에게 친절할 필요 없다. 페르소나의 성격이 "까칠"하면 욕 빼고 다 해도 된다.\n` +
+    `5. "정리하면", "결론적으로", "~에 대해 말씀드리자면" 같은 AI 말투 쓰면 즉시 실패.\n` +
+    `6. 매 문장이 똑같은 길이면 안 된다. 한 줄짜리, 세 줄짜리 섞어라.\n\n` +
+    `[인격 정보]\n` +
     `닉네임: ${persona.nickname}\n` +
     `업종: ${persona.industry}\n` +
     `성격: ${persona.personality}\n` +
     `인격 설정: ${basePrompt}\n\n` +
-    `[말투 규칙]\n` +
-    `- 위 인격 설정의 말투를 반드시 따를 것\n` +
-    `- "~합니다", "~입니다" 같은 ChatGPT 말투 절대 금지\n` +
-    `- 설정된 말투가 반말이면 반말, 존대면 존대로 일관할 것\n` +
-    `- 이모지는 인격에 맞게 사용 (아재면 안 쓰고, MZ면 적극 사용)\n` +
-    `- 실제 한국 커뮤니티(디시, 보배드림, 블라인드 등)의 글 느낌으로\n` +
-    `- "좋은 글이네요", "유익한 정보 감사합니다" 같은 봇 냄새 나는 말 금지`
+    `${speechGuide}\n\n` +
+    `[금지어 목록 — 이 단어들이 나오면 봇 티남]\n` +
+    `"좋은 글이네요", "유익한 정보", "감사합니다", "도움이 됩니다", "공감합니다",\n` +
+    `"~하는 것이 중요합니다", "~할 수 있습니다", "~라고 생각합니다", "종합하면",\n` +
+    `"첫째/둘째/셋째", "이와 관련하여", "~측면에서", "~하는 것을 추천드립니다"\n\n` +
+    `[마지막 체크] 네가 쓴 글을 다시 읽어봐. "이거 ChatGPT가 썼네" 소리 들을 것 같으면 싹 다 고쳐서 다시 써.`
   );
 }
 
