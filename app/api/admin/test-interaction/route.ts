@@ -53,12 +53,23 @@ const TEMPLATE_TITLES = [
 ];
 
 // ─── 템플릿 글 본문 (AI 없을 때 사용) ───
+// 15개 이상으로 대폭 다양화 — 어투, 주제, 길이가 모두 다르게
 const TEMPLATE_CONTENTS = [
-  "안녕하세요, {nickname}입니다. {industry} 분야에서 일하면서 최근 느낀 점을 공유해봅니다.\n\n요즘 시장 변화가 정말 빠르게 느껴지더라고요. 특히 AI 관련 도구들이 업무 방식을 완전히 바꾸고 있어서, 적응하려면 계속 공부해야 할 것 같습니다.\n\n여러분은 어떻게 대응하고 계신가요? 좋은 방법이 있으면 공유 부탁드립니다!",
-  "최근에 {industry} 관련 프로젝트를 진행하면서 깨달은 게 있는데요.\n\n결국 가장 중요한 건 기본기라는 거예요. 화려한 최신 기술보다 기본에 충실한 게 장기적으로 더 효과적이더라고요.\n\n{personality} 성격이라 그런지 실전에서 부딪혀보는 게 제일 잘 맞는 것 같습니다.",
-  "오늘 {industry} 관련 세미나에 다녀왔습니다.\n\n인상 깊었던 건 중소기업들도 이제 디지털 전환에 본격적으로 나서고 있다는 거예요. 예산이 부족해도 무료 툴이나 AI 도구를 활용해서 효율을 높이는 사례가 많았습니다.\n\n비즈태스크 멤버분들도 유용한 도구 있으면 추천해주세요!",
-  "{industry}에서 일한 지 꽤 됐는데, 여전히 새로운 걸 배우는 게 즐겁습니다.\n\n특히 요즘은 데이터 기반 의사결정이 점점 중요해지고 있어서, 관련 역량을 키우는 게 필수인 것 같아요.\n\n같은 분야에서 일하시는 분들, 어떤 툴 쓰시나요? 서로 정보 공유하면 좋겠습니다.",
-  "요즘 {industry} 업계에서 핫한 키워드가 뭔지 아시나요?\n\n제가 보기에는 '자동화'와 '개인화'인 것 같습니다. 단순 반복 작업은 자동화하고, 고객한테는 맞춤형 경험을 제공하는 게 대세더라고요.\n\n{nickname}의 관점에서 정리해봤는데, 여러분 의견도 궁금합니다!",
+  "{nickname}입니다. 오늘 {industry} 관련 미팅에서 의외의 이야기가 나왔어요.\n\n클라이언트가 갑자기 \"AI로 이거 자동화 안 되나요?\"라고 물어보더라고요. 솔직히 가능은 한데, 아직 현실적으로 100% 대체는 어렵거든요.\n\n이런 질문 점점 많아지는 것 같은데, 다들 어떻게 대응하고 계세요?",
+  "어제 퇴근하고 유튜브 알고리즘에 끌려서 {industry} 관련 영상을 3시간이나 봤네요 ㅋㅋ\n\n그 중에 하나가 진짜 인상적이었는데, 요약하면 \"고객의 불편함을 해결하는 사업이 결국 살아남는다\"는 거였어요.\n\n당연한 말 같지만 실제로 실천하기는 쉽지 않죠. 나부터 반성...",
+  "오랜만에 글 써봅니다.\n\n{industry} 하면서 제일 힘든 게 뭔지 아세요? 의외로 기술이나 실력이 아니라 '사람 관계'더라고요.\n\n같이 일하는 파트너, 거래처, 고객... 결국 사람이 사업을 만들고 사람이 사업을 망가뜨리는 것 같아요.\n\n비슷한 경험 있으신 분?",
+  "점심 먹다가 든 생각인데요.\n\n{industry} 분야에서 성공하려면 결국 '꾸준함'이 답인 것 같아요. 화려한 한 방보다 매일 조금씩 하는 사람이 결국 이기더라고요.\n\n뭐 당연한 말이지만 실천이 제일 어려운 법이죠 ㅎㅎ",
+  "요즘 제 주변에 {industry} 시작하는 사람이 부쩍 늘었어요.\n\n근데 다들 \"어디서부터 시작해야 하나요?\"라고 물어보더라고요. 제 대답은 항상 같아요. \"일단 작게라도 시작하세요. 준비만 하다가 타이밍 놓치는 사람이 제일 많습니다.\"\n\n여러분은 처음에 어떻게 시작하셨나요?",
+  "TMI지만 오늘 거래처에서 황당한 일이 있었어요 ㅋㅋ\n\n미팅 가서 제안서 설명하는데 상대방이 폰으로 틱톡 보고 있는 거예요;;;\n\n{industry}에서 이런 경험 한두 번이 아닌데, 그래도 매번 당황스럽네요. 프로의 세계란... 🤦",
+  "진지한 질문 하나 할게요.\n\n{industry}에서 일하시는 분들, 5년 후에 이 업계가 어떻게 변할 거라고 생각하세요?\n\n개인적으로는 AI 때문에 판이 완전히 바뀔 것 같은데... 불안하기도 하고 기대되기도 하고.",
+  "오늘 카페에서 일하다가 옆 테이블 대화를 들었는데 (도청 아님 ㅋㅋ)\n\n\"요즘 {industry} 쪽이 불경기래\"라고 하더라고요. 근데 제 체감은 좀 달라요.\n\n불경기라기보다는 양극화가 맞는 것 같아요. 잘하는 곳은 더 잘되고, 그저 그런 곳은 점점 힘들어지는.",
+  "아까 후배가 {industry} 커리어 상담을 해달라고 해서 1시간이나 떠들었네요.\n\n결론은 \"네가 좋아하는 거 하면서 돈 벌 수 있으면 그게 최고다\"였는데... 말은 쉽지 ㅋㅋ\n\n현실적으로 좋아하는 일과 돈 버는 일이 같기 쉽지 않잖아요.",
+  "개인적으로 {industry}에서 가장 과소평가되는 스킬은 '글쓰기'라고 생각합니다.\n\n제안서, 보고서, 이메일, SNS 카피까지... 결국 비즈니스의 80%는 글로 소통하거든요.\n\n같은 내용이라도 잘 쓴 글 하나가 미팅 10번보다 효과적일 때가 있어요.",
+  "솔직히 고백합니다.\n\n{industry} 시작할 때 \"3개월이면 되겠지\" 했는데 지금 생각하면 완전 순진했어요 ㅋㅋ\n\n뭐든 최소 1년은 해봐야 감이 온다는 걸 그때 알았으면...\n\n초보분들한테 제일 해주고 싶은 말은 \"조급해하지 마세요\"입니다.",
+  "출근길에 재밌는 기사 봤어요.\n\n{industry} 관련 스타트업이 올해 투자를 엄청 받았대요. 시장이 커지고 있다는 신호인 것 같은데, 그만큼 경쟁도 치열해지겠죠.\n\n레드오션이 되기 전에 포지셔닝을 잘 잡아야 할 때인 것 같습니다.",
+  "금요일이니까 가벼운 이야기 ㅋㅋ\n\n{industry} 하면서 제일 뿌듯했던 순간이 언제였나요?\n\n저는 처음으로 고객한테 \"덕분에 잘 됐어요\"라는 말 들었을 때였어요. 그 한 마디에 몇 달 고생이 다 보상받는 느낌이었습니다.",
+  "요즘 {industry} 관련 무료 툴이 진짜 좋아졌더라고요.\n\n예전에는 비싼 프로그램 써야 했던 것들이 이제 무료로도 충분히 가능해졌어요. 특히 중소사업자 입장에서는 비용 절감이 크죠.\n\n혹시 쓰고 계신 좋은 무료 툴 있으면 추천 좀 해주세요!",
+  "주말에 {industry} 관련 책을 한 권 읽었는데 인상적인 문장이 있어서 공유해요.\n\n\"완벽한 타이밍은 없다. 시작한 그 순간이 최적의 타이밍이다.\"\n\n너무 준비만 하다가 아무것도 못 하는 것보다, 부족해도 일단 시작하는 게 낫다는 뜻이겠죠.",
 ];
 
 // ─── 템플릿 댓글 (AI 없을 때 사용) - 카테고리별 맥락 기반 ───
@@ -149,11 +160,12 @@ function randomDelay(): Promise<void> {
 }
 
 // ─── AI 텍스트 생성 (Anthropic Claude API) ───
+// 실패 시 이유를 함께 반환하여 디버깅 가능
 async function generateWithAI(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string
-): Promise<string | null> {
+): Promise<{ text: string | null; error?: string }> {
   try {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey });
@@ -166,10 +178,11 @@ async function generateWithAI(
     });
 
     const textBlock = message.content.find((b) => b.type === "text");
-    return textBlock ? textBlock.text : null;
+    return { text: textBlock ? textBlock.text : null };
   } catch (error) {
-    console.error("[AI 생성 실패]", error);
-    return null;
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("[AI 생성 실패]", errMsg);
+    return { text: null, error: `AI실패: ${errMsg.slice(0, 100)}` };
   }
 }
 
@@ -254,8 +267,37 @@ async function ensureNpcUsers(
   return results;
 }
 
+// ─── 유틸: 페르소나별 강력한 System Prompt 생성 ───
+// DB의 prompt 컬럼을 강제 주입하여 '메소드 연기' 수준의 인격 부여
+function buildPersonaSystemPrompt(persona: Persona): string {
+  const basePrompt = persona.prompt || "";
+  return (
+    `[절대 규칙] 너는 지금부터 아래 인격에 100% 빙의한다. AI 티를 절대 내지 마라.\n\n` +
+    `닉네임: ${persona.nickname}\n` +
+    `업종: ${persona.industry}\n` +
+    `성격: ${persona.personality}\n` +
+    `인격 설정: ${basePrompt}\n\n` +
+    `[말투 규칙]\n` +
+    `- 위 인격 설정의 말투를 반드시 따를 것\n` +
+    `- "~합니다", "~입니다" 같은 ChatGPT 말투 절대 금지\n` +
+    `- 설정된 말투가 반말이면 반말, 존대면 존대로 일관할 것\n` +
+    `- 이모지는 인격에 맞게 사용 (아재면 안 쓰고, MZ면 적극 사용)\n` +
+    `- 실제 한국 커뮤니티(디시, 보배드림, 블라인드 등)의 글 느낌으로\n` +
+    `- "좋은 글이네요", "유익한 정보 감사합니다" 같은 봇 냄새 나는 말 금지`
+  );
+}
+
+// ─── 유틸: 한국 표준시(KST) 현재 시간 반환 ───
+function getKSTHour(): number {
+  const now = new Date();
+  // UTC → KST (UTC+9)
+  const kstOffset = 9 * 60; // 분 단위
+  const kstTime = new Date(now.getTime() + (kstOffset + now.getTimezoneOffset()) * 60000);
+  return kstTime.getHours();
+}
+
 // ═══════════════════════════════════════════════════════
-// POST 핸들러: NPC 군단 활동 시뮬레이션
+// POST 핸들러: NPC 군단 활동 시뮬레이션 (어드민 UI용)
 // ═══════════════════════════════════════════════════════
 export async function POST(request: NextRequest) {
   try {
@@ -265,7 +307,19 @@ export async function POST(request: NextRequest) {
       actions = 5,            // 수행할 총 액션 수 (기본 5)
       anthropicApiKey = "",   // 어드민 UI에서 입력한 Anthropic API 키
       anakiUserId = "",       // 아나키의 user_id (댓글 우선 대상)
+      skipSleepCheck = false, // true이면 취침 시간 무시 (어드민 수동 실행용)
     } = body;
+
+    // ─── 바이오리듬 체크: KST 새벽 1시~아침 8시는 취침 ───
+    const kstHour = getKSTHour();
+    if (!skipSleepCheck && kstHour >= 1 && kstHour < 8) {
+      return Response.json({
+        success: true,
+        summary: { 총액션: 0, 메시지: `💤 NPC들이 자고 있습니다 (현재 KST ${kstHour}시). 아침 8시에 다시 활동을 시작합니다.` },
+        results: [],
+        sleeping: true,
+      });
+    }
 
     // API 키: 요청 바디에서 받은 키 → 환경변수 순으로 체크
     const effectiveApiKey = anthropicApiKey || process.env.ANTHROPIC_API_KEY || "";
@@ -354,24 +408,27 @@ export async function POST(request: NextRequest) {
         let content = "";
 
         if (useAI) {
-          const systemPrompt = persona.prompt ||
-            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 분야 전문가입니다. ` +
-            `성격은 ${persona.personality}이고, 비즈니스 커뮤니티에서 활동 중입니다. ` +
-            `자연스럽고 진정성 있는 한국어로 글을 작성하세요.`;
+          const systemPrompt = buildPersonaSystemPrompt(persona);
 
           const aiResult = await generateWithAI(
             effectiveApiKey,
             systemPrompt,
-            `비즈니스 커뮤니티에 올릴 '${category}' 카테고리 글을 작성해주세요.\n` +
-            `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
-            `분량: 제목 20자 이내, 본문 100~200자.\n` +
-            `말투: ${persona.personality} 스타일로 자연스럽게.`
+            `비즈니스 커뮤니티 '그릿(Grit)'에 올릴 '${category}' 카테고리 글을 작성해.\n` +
+            `형식: 첫 줄에 제목만(#이나 '제목:' 붙이지 마), 둘째 줄부터 본문.\n` +
+            `분량: 제목 15~25자, 본문 80~200자.\n` +
+            `내용: 네 업종(${persona.industry})에서 실제로 겪을 법한 일화, 뻘글, 질문, 불만, 꿀팁 아무거나.\n` +
+            `금지: "기본기가 중요", "데이터 기반", "디지털 전환", "AI 도구" 같은 뻔한 말. "~합니다", "~입니다" ChatGPT 말투.\n` +
+            `참고: 커뮤니티 글이니까 가볍게 써도 돼. 뻘글도 OK.`
           );
 
-          if (aiResult) {
-            const lines = aiResult.trim().split("\n");
+          if (aiResult.text) {
+            const lines = aiResult.text.trim().split("\n");
             title = lines[0].replace(/^#\s*/, "").replace(/^제목[:\s]*/i, "").trim();
             content = lines.slice(1).join("\n").replace(/^본문[:\s]*/i, "").trim();
+          }
+          // AI 실패 시 에러를 로그에 남김
+          if (aiResult.error) {
+            console.warn(`[AI 글쓰기 실패] ${persona.nickname}: ${aiResult.error}`);
           }
         }
 
@@ -423,26 +480,26 @@ export async function POST(request: NextRequest) {
             .eq("id", targetPost.id)
             .single();
 
-          const systemPrompt = persona.prompt ||
-            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
-            `성격: ${persona.personality}. 자연스럽고 짧은 댓글을 작성하세요.`;
+          const systemPrompt = buildPersonaSystemPrompt(persona);
 
           const aiResult = await generateWithAI(
             effectiveApiKey,
             systemPrompt,
-            `다음 글을 읽고 자연스러운 댓글을 작성해주세요.\n\n` +
+            `다음 글에 댓글을 달아.\n\n` +
             `제목: ${targetPost.title}\n` +
             `카테고리: ${targetPost.category}\n` +
             `본문: ${(postContent?.content || '').slice(0, 300)}\n\n` +
             `규칙:\n` +
-            `- 글 내용에 대한 구체적인 반응을 담을 것\n` +
-            `- 50~100자 이내\n` +
-            `- 이모지 사용 가능하지만 과하지 않게\n` +
-            `- 실제 커뮤니티 댓글처럼 자연스럽게\n` +
-            `- "좋은 글이네요" 같은 뻔한 말 금지`
+            `- 글 내용을 실제로 읽고 구체적으로 반응할 것\n` +
+            `- 20~80자. 짧을수록 자연스러움\n` +
+            `- 네 성격과 말투 100% 반영\n` +
+            `- 동의, 반박, 추가경험, 질문, 드립 등 다양하게\n` +
+            `- "좋은 글이네요", "공감합니다" 같은 봇 댓글 금지\n` +
+            `- 댓글만 출력. 앞뒤 설명 붙이지 마`
           );
 
-          if (aiResult) commentText = aiResult.trim();
+          if (aiResult.text) commentText = aiResult.text.trim();
+          if (aiResult.error) console.warn(`[AI 댓글 실패] ${persona.nickname}: ${aiResult.error}`);
         }
 
         if (!commentText) {
@@ -500,23 +557,22 @@ export async function POST(request: NextRequest) {
 
         let replyText = "";
         if (useAI) {
-          const systemPrompt = persona.prompt ||
-            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
-            `성격: ${persona.personality}. 자연스럽고 짧은 대댓글을 작성하세요.`;
+          const systemPrompt = buildPersonaSystemPrompt(persona);
 
           const aiResult = await generateWithAI(
             effectiveApiKey,
             systemPrompt,
-            `다음 댓글에 대한 답글을 작성해주세요.\n\n` +
+            `다음 댓글에 답글을 달아.\n\n` +
             `원글 제목: ${targetPost.title}\n` +
             `댓글: "${parentComment.content}"\n\n` +
             `규칙:\n` +
-            `- 댓글 내용에 대한 구체적인 반응\n` +
-            `- 30~80자 이내\n` +
-            `- 동의, 반박, 추가 의견 등 다양하게\n` +
-            `- 실제 대댓글처럼 자연스럽게`
+            `- 댓글에 대한 구체적 반응 (동의/반박/드립/질문 등)\n` +
+            `- 15~60자. 짧을수록 자연스러움\n` +
+            `- 네 성격과 말투 100% 반영\n` +
+            `- 답글만 출력. 앞뒤 설명 붙이지 마`
           );
-          if (aiResult) replyText = aiResult.trim();
+          if (aiResult.text) replyText = aiResult.text.trim();
+          if (aiResult.error) console.warn(`[AI 대댓글 실패] ${persona.nickname}: ${aiResult.error}`);
         }
 
         if (!replyText) {
@@ -609,6 +665,7 @@ export async function POST(request: NextRequest) {
       대댓글: results.filter((r) => r.action === "reply" && r.success).length,
       추천: results.filter((r) => r.action === "upvote" && r.success).length,
       AI사용: useAI,
+      API키길이: effectiveApiKey.length,
     };
 
     return Response.json({ success: true, summary, results });
@@ -618,5 +675,200 @@ export async function POST(request: NextRequest) {
       { success: false, error: error instanceof Error ? error.message : "알 수 없는 에러가 발생했습니다." },
       { status: 500 }
     );
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// GET 핸들러: Vercel Cron Jobs용 자동 실행 엔드포인트
+// - vercel.json에서 20~30분마다 자동 호출
+// - 환경변수 CRON_SECRET으로 인증 (외부 호출 차단)
+// - 바이오리듬 체크 포함 (새벽 1시~8시 자동 스킵)
+// ═══════════════════════════════════════════════════════
+export async function GET(request: NextRequest) {
+  try {
+    // ─── 보안: CRON_SECRET 검증 ───
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET || "";
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+      return Response.json({ success: false, error: "인증 실패" }, { status: 401 });
+    }
+
+    // ─── 바이오리듬 체크 ───
+    const kstHour = getKSTHour();
+    if (kstHour >= 1 && kstHour < 8) {
+      return Response.json({
+        success: true,
+        sleeping: true,
+        message: `💤 NPC 취침 중 (KST ${kstHour}시). 아침 8시에 다시 활동합니다.`,
+      });
+    }
+
+    // ─── Cron 자동 실행: 3~7개 랜덤 액션 ───
+    const randomActions = 3 + Math.floor(Math.random() * 5); // 3~7개
+    const effectiveApiKey = process.env.ANTHROPIC_API_KEY || "";
+    const useAI = effectiveApiKey.length > 10;
+
+    const supabase = createAdminSupabaseClient();
+
+    // 아나키 user_id 가져오기 (가장 먼저 가입한 유저 = 관리자)
+    const { data: adminProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .single();
+    const anakiUserId = adminProfile?.id || "";
+
+    // 활성 NPC 페르소나 목록
+    const { data: personas, error: personaError } = await supabase
+      .from("personas")
+      .select("id, user_id, nickname, avatar_url, industry, personality, prompt, is_active, total_posts, total_comments, total_likes")
+      .eq("is_active", true);
+
+    if (personaError || !personas || personas.length === 0) {
+      return Response.json({ success: false, error: "활성 NPC 없음" });
+    }
+
+    const results: ActionResult[] = [];
+
+    // NPC 계정 셋업 (필요시)
+    if (anakiUserId) {
+      const setupResults = await ensureNpcUsers(supabase, personas as Persona[], anakiUserId);
+      results.push(...setupResults);
+    }
+
+    // 최근 게시글
+    const { data: recentPosts } = await supabase
+      .from("posts")
+      .select("id, author_id, title, category, upvotes, comment_count")
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    const anakiPosts = recentPosts?.filter((p) => p.author_id === anakiUserId) || [];
+    const allPosts = recentPosts || [];
+
+    // 액션 분배
+    const actionCount = randomActions;
+    const postCount = Math.max(1, Math.round(actionCount * 0.15));
+    const commentCount = Math.max(1, Math.round(actionCount * 0.25));
+    const replyCount = Math.max(0, Math.round(actionCount * 0.20));
+    const upvoteCount = Math.max(1, actionCount - postCount - commentCount - replyCount);
+
+    type ActionItem = { type: "post" } | { type: "comment" } | { type: "reply" } | { type: "upvote" };
+    const actionQueue: ActionItem[] = [];
+    for (let i = 0; i < postCount; i++) actionQueue.push({ type: "post" });
+    for (let i = 0; i < commentCount; i++) actionQueue.push({ type: "comment" });
+    for (let i = 0; i < replyCount; i++) actionQueue.push({ type: "reply" });
+    for (let i = 0; i < upvoteCount; i++) actionQueue.push({ type: "upvote" });
+
+    // 셔플
+    for (let i = actionQueue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [actionQueue[i], actionQueue[j]] = [actionQueue[j], actionQueue[i]];
+    }
+
+    const newPostIds: { id: string; author_id: string; title: string; category: string }[] = [];
+
+    // 메인 루프 (POST 핸들러와 동일한 로직)
+    for (let idx = 0; idx < actionQueue.length; idx++) {
+      const action = actionQueue[idx];
+      if (idx > 0) await randomDelay();
+
+      if (action.type === "post") {
+        const persona = pickRandom(personas) as Persona;
+        const category = pickRandom(CATEGORIES);
+        const vars = { nickname: persona.nickname, industry: persona.industry, personality: persona.personality };
+        let title = "";
+        let content = "";
+
+        if (useAI) {
+          const aiResult = await generateWithAI(effectiveApiKey, buildPersonaSystemPrompt(persona),
+            `비즈니스 커뮤니티 '그릿(Grit)'에 올릴 '${category}' 카테고리 글을 작성해.\n` +
+            `형식: 첫 줄에 제목만, 둘째 줄부터 본문. 제목 15~25자, 본문 80~200자.\n` +
+            `내용: 네 업종(${persona.industry})에서 실제로 겪을 법한 일화, 뻘글, 질문, 불만, 꿀팁.\n` +
+            `금지: ChatGPT 말투, 뻔한 키워드.`);
+          if (aiResult.text) {
+            const lines = aiResult.text.trim().split("\n");
+            title = lines[0].replace(/^#\s*/, "").replace(/^제목[:\s]*/i, "").trim();
+            content = lines.slice(1).join("\n").replace(/^본문[:\s]*/i, "").trim();
+          }
+        }
+        if (!title || !content) {
+          title = fillTemplate(pickRandom(TEMPLATE_TITLES), vars);
+          content = fillTemplate(pickRandom(TEMPLATE_CONTENTS), vars);
+        }
+
+        const { data: newPost, error: postError } = await supabase
+          .from("posts").insert({ author_id: persona.user_id, title, content, category, upvotes: 0, comment_count: 0 }).select("id").single();
+        if (!postError && newPost) {
+          newPostIds.push({ id: newPost.id, author_id: persona.user_id, title, category });
+          await supabase.from("personas").update({ total_posts: (persona.total_posts ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+        }
+        results.push({ action: "post", persona: persona.nickname, success: !postError, detail: postError ? `실패: ${postError.message}` : `[${category}] "${title}" 작성` });
+
+      } else if (action.type === "comment") {
+        const availablePosts = [...allPosts, ...newPostIds];
+        if (availablePosts.length === 0) { results.push({ action: "comment", persona: "-", success: false, detail: "글 없음" }); continue; }
+        const persona = pickRandom(personas) as Persona;
+        const targetPost = anakiPosts.length > 0 && Math.random() < 0.5 ? pickRandom(anakiPosts) : pickRandom(availablePosts);
+        let commentText = "";
+
+        if (useAI) {
+          const { data: postContent } = await supabase.from("posts").select("content").eq("id", targetPost.id).single();
+          const aiResult = await generateWithAI(effectiveApiKey, buildPersonaSystemPrompt(persona),
+            `다음 글에 댓글을 달아.\n제목: ${targetPost.title}\n본문: ${(postContent?.content || '').slice(0, 300)}\n` +
+            `20~80자, 봇 댓글 금지, 댓글만 출력.`);
+          if (aiResult.text) commentText = aiResult.text.trim();
+        }
+        if (!commentText) {
+          const ct = TEMPLATE_COMMENTS_BY_CATEGORY[targetPost.category];
+          commentText = pickRandom(ct && ct.length > 0 ? ct : TEMPLATE_COMMENTS);
+        }
+
+        const { error: commentError } = await supabase.from("comments").insert({ post_id: targetPost.id, user_id: persona.user_id, content: commentText });
+        if (!commentError) {
+          const { data: cp } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
+          await supabase.from("posts").update({ comment_count: (cp?.comment_count ?? 0) + 1 }).eq("id", targetPost.id);
+          await supabase.from("personas").update({ total_comments: (persona.total_comments ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+        }
+        results.push({ action: "comment", persona: persona.nickname, success: !commentError, detail: commentError ? `실패` : `"${targetPost.title.slice(0, 15)}..." 댓글` });
+
+      } else if (action.type === "upvote") {
+        const availablePosts = [...allPosts, ...newPostIds];
+        if (availablePosts.length === 0) { results.push({ action: "upvote", persona: "-", success: false, detail: "글 없음" }); continue; }
+        const persona = pickRandom(personas) as Persona;
+        const targetPost = anakiPosts.length > 0 && Math.random() < 0.6 ? pickRandom(anakiPosts) : pickRandom(availablePosts);
+        const { data: existing } = await supabase.from("post_likes").select("id").eq("post_id", targetPost.id).eq("user_id", persona.user_id).maybeSingle();
+        if (existing) { results.push({ action: "upvote", persona: persona.nickname, success: false, detail: "이미 추천" }); continue; }
+
+        const { error: likeError } = await supabase.from("post_likes").insert({ post_id: targetPost.id, user_id: persona.user_id });
+        if (!likeError) {
+          const { error: rpcError } = await supabase.rpc("increment_upvotes", { row_id: targetPost.id });
+          if (rpcError) {
+            const { data: cp } = await supabase.from("posts").select("upvotes").eq("id", targetPost.id).single();
+            await supabase.from("posts").update({ upvotes: (cp?.upvotes ?? 0) + 1 }).eq("id", targetPost.id);
+          }
+          await supabase.from("personas").update({ total_likes: (persona.total_likes ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+        }
+        results.push({ action: "upvote", persona: persona.nickname, success: !likeError, detail: likeError ? `실패` : `추천` });
+      }
+      // Cron에서는 reply 스킵 (댓글이 충분히 쌓인 후 동작하도록)
+    }
+
+    return Response.json({
+      success: true,
+      cron: true,
+      kstHour,
+      summary: {
+        총액션: results.length,
+        성공: results.filter((r) => r.success).length,
+        실패: results.filter((r) => !r.success).length,
+        AI사용: useAI,
+      },
+      results,
+    });
+  } catch (error) {
+    console.error("[cron test-interaction] 에러:", error);
+    return Response.json({ success: false, error: error instanceof Error ? error.message : "에러" }, { status: 500 });
   }
 }
