@@ -156,50 +156,180 @@ function smellsLikeBot(text: string): boolean {
   return botPatterns.some((p) => p.test(text));
 }
 
-// ─── AI 텍스트 생성 (Anthropic Claude API) ───
-// temperature 0.9로 창의적 생성 + 봇 탐지 시 1회 재생성
-async function generateWithAI(
+// ─── AI 텍스트 생성: 폴백 체인 (Anthropic → Gemini → OpenAI) ───
+// 1순위: Anthropic Claude (크레딧 있을 때)
+// 2순위: Google Gemini (Anthropic 실패 시)
+// 3순위: OpenAI GPT (Gemini도 실패 시)
+// 전부 실패하면 null 반환 → 템플릿 폴백
+
+// --- 1) Anthropic Claude 생성 ---
+async function generateWithAnthropic(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string
-): Promise<{ text: string | null; error?: string }> {
-  try {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+): Promise<string | null> {
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey });
 
-    // 1차 생성 (temperature 0.9 — 사람처럼 약간 헛소리도 하게)
-    const message = await client.messages.create({
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 500,
+    temperature: 0.9,
+    system: systemPrompt,
+    messages: [{ role: "user", content: userPrompt }],
+  });
+
+  const textBlock = message.content.find((b) => b.type === "text");
+  const result = textBlock ? textBlock.text : null;
+
+  // 봇 탐지 시 1회 재생성
+  if (result && smellsLikeBot(result)) {
+    console.warn(`[Anthropic 봇 탐지] 재생성 시도`);
+    const retry = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 500,
-      temperature: 0.9,
-      system: systemPrompt,
+      temperature: 1.0,
+      system: systemPrompt + `\n\n[긴급] 방금 네가 쓴 글이 AI 티가 났다. 이번엔 진짜 사람처럼 써. 완전 다르게.`,
       messages: [{ role: "user", content: userPrompt }],
     });
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    const firstResult = textBlock ? textBlock.text : null;
-
-    // ─── 자체 검수: "이거 AI가 쓴 것 같은가?" ───
-    // 봇 패턴 발견 시 1회만 재생성 시도 (무한루프 방지)
-    if (firstResult && smellsLikeBot(firstResult)) {
-      console.warn(`[봇 탐지] AI 냄새 감지 → 재생성 시도`);
-      const retry = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 500,
-        temperature: 1.0, // 재시도는 더 높은 temperature
-        system: systemPrompt + `\n\n[긴급] 방금 네가 쓴 글이 AI 티가 났다. 이번엔 진짜 사람처럼 써. 완전 다르게.`,
-        messages: [{ role: "user", content: userPrompt }],
-      });
-      const retryBlock = retry.content.find((b) => b.type === "text");
-      if (retryBlock?.text) return { text: retryBlock.text };
-    }
-
-    return { text: firstResult };
-  } catch (error) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    console.error("[AI 생성 실패]", errMsg);
-    return { text: null, error: `AI실패: ${errMsg.slice(0, 100)}` };
+    const retryBlock = retry.content.find((b) => b.type === "text");
+    if (retryBlock?.text) return retryBlock.text;
   }
+
+  return result;
+}
+
+// --- 2) Google Gemini 생성 ---
+async function generateWithGemini(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string | null> {
+  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: systemPrompt,
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 500,
+    },
+  });
+
+  const result = await model.generateContent(userPrompt);
+  const text = result.response.text();
+
+  // 봇 탐지 시 1회 재생성 (temperature 높여서)
+  if (text && smellsLikeBot(text)) {
+    console.warn(`[Gemini 봇 탐지] 재생성 시도`);
+    const retryModel = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: systemPrompt + `\n\n[긴급] 방금 네가 쓴 글이 AI 티가 났다. 완전 다르게 써.`,
+      generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
+    });
+    const retry = await retryModel.generateContent(userPrompt);
+    const retryText = retry.response.text();
+    if (retryText) return retryText;
+  }
+
+  return text || null;
+}
+
+// --- 3) OpenAI GPT 생성 ---
+async function generateWithOpenAI(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string | null> {
+  const { default: OpenAI } = await import("openai");
+  const client = new OpenAI({ apiKey });
+
+  const completion = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    max_tokens: 500,
+    temperature: 0.9,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content || null;
+
+  // 봇 탐지 시 1회 재생성
+  if (text && smellsLikeBot(text)) {
+    console.warn(`[OpenAI 봇 탐지] 재생성 시도`);
+    const retry = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 500,
+      temperature: 1.2,
+      messages: [
+        { role: "system", content: systemPrompt + `\n\n[긴급] AI 티 났다. 완전 다르게 써.` },
+        { role: "user", content: userPrompt },
+      ],
+    });
+    const retryText = retry.choices[0]?.message?.content;
+    if (retryText) return retryText;
+  }
+
+  return text;
+}
+
+// --- 메인 생성 함수: 폴백 체인 ---
+async function generateWithAI(
+  _apiKey: string, // 하위 호환용 (실제로는 환경변수 우선 사용)
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ text: string | null; error?: string; provider?: string }> {
+  // 각 AI 제공자의 API 키 (환경변수에서 가져옴)
+  const anthropicKey = _apiKey || process.env.ANTHROPIC_API_KEY || "";
+  const geminiKey = process.env.GEMINI_API_KEY || "";
+  const openaiKey = process.env.OPENAI_API_KEY || "";
+
+  const errors: string[] = [];
+
+  // 1순위: Anthropic Claude
+  if (anthropicKey.length > 10) {
+    try {
+      const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
+      if (result) return { text: result, provider: "anthropic" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Anthropic 실패] ${msg.slice(0, 120)}`);
+      errors.push(`Anthropic: ${msg.slice(0, 80)}`);
+    }
+  }
+
+  // 2순위: Google Gemini
+  if (geminiKey.length > 10) {
+    try {
+      const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
+      if (result) return { text: result, provider: "gemini" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Gemini 실패] ${msg.slice(0, 120)}`);
+      errors.push(`Gemini: ${msg.slice(0, 80)}`);
+    }
+  }
+
+  // 3순위: OpenAI GPT
+  if (openaiKey.length > 10) {
+    try {
+      const result = await generateWithOpenAI(openaiKey, systemPrompt, userPrompt);
+      if (result) return { text: result, provider: "openai" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[OpenAI 실패] ${msg.slice(0, 120)}`);
+      errors.push(`OpenAI: ${msg.slice(0, 80)}`);
+    }
+  }
+
+  // 전부 실패
+  const errorSummary = errors.length > 0
+    ? errors.join(" | ")
+    : "API키 없음 (ANTHROPIC/GEMINI/OPENAI 모두 미설정)";
+  console.error(`[AI 전체 실패] ${errorSummary}`);
+  return { text: null, error: errorSummary };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -376,8 +506,11 @@ export async function POST(request: NextRequest) {
     }
 
     // API 키: 요청 바디에서 받은 키 → 환경변수 순으로 체크
+    // 폴백 체인: Anthropic → Gemini → OpenAI (하나라도 있으면 AI 활성화)
     const effectiveApiKey = anthropicApiKey || process.env.ANTHROPIC_API_KEY || "";
-    const useAI = effectiveApiKey.length > 10;
+    const geminiKey = process.env.GEMINI_API_KEY || "";
+    const openaiKey = process.env.OPENAI_API_KEY || "";
+    const useAI = effectiveApiKey.length > 10 || geminiKey.length > 10 || openaiKey.length > 10;
 
     // ─── Service Role Supabase 클라이언트 생성 ───
     const supabase = createAdminSupabaseClient();
@@ -755,7 +888,11 @@ export async function POST(request: NextRequest) {
       대댓글: results.filter((r) => r.action === "reply" && r.success).length,
       추천: results.filter((r) => r.action === "upvote" && r.success).length,
       AI사용: useAI,
-      API키길이: effectiveApiKey.length,
+      AI제공자: [
+        effectiveApiKey.length > 10 ? "Anthropic" : null,
+        geminiKey.length > 10 ? "Gemini" : null,
+        openaiKey.length > 10 ? "OpenAI" : null,
+      ].filter(Boolean),
     };
 
     return Response.json({ success: true, summary, results });
@@ -795,8 +932,11 @@ export async function GET(request: NextRequest) {
 
     // ─── Cron 자동 실행: 3~7개 랜덤 액션 ───
     const randomActions = 3 + Math.floor(Math.random() * 5); // 3~7개
+    // 폴백 체인: Anthropic → Gemini → OpenAI (하나라도 있으면 AI 활성화)
     const effectiveApiKey = process.env.ANTHROPIC_API_KEY || "";
-    const useAI = effectiveApiKey.length > 10;
+    const geminiKeyCron = process.env.GEMINI_API_KEY || "";
+    const openaiKeyCron = process.env.OPENAI_API_KEY || "";
+    const useAI = effectiveApiKey.length > 10 || geminiKeyCron.length > 10 || openaiKeyCron.length > 10;
 
     const supabase = createAdminSupabaseClient();
 
