@@ -1,18 +1,15 @@
 // 파일 위치: app/admin/personas/page.tsx
-// 용도: VIP 전용 AI 페르소나(NPC) 관리 페이지
+// 용도: AI 페르소나(NPC) 관리 페이지
 // 기능: 페르소나 목록 조회, 생성, 수정, AUTO/MANUAL 토글
-// 접근 제한: VIP(is_vip === true)만 사용 가능
+// VIP 가드: layout.tsx에서 통합 처리 (이 파일에서는 불필요)
 // 프로젝트: 그릿(Grit) 콜드스타트 해결용 AI NPC 시스템
 // 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import {
-  ArrowLeft,
   Loader2,
   Plus,
   Bot,
@@ -21,13 +18,11 @@ import {
   Pencil,
   Trash2,
   X,
-  Shield,
   Activity,
   MessageSquare,
   FileText,
   Clock,
   Save,
-  User,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -76,13 +71,11 @@ const EMPTY_FORM = {
 
 // ═══════════════════════════════════════════════════════
 // 메인 컴포넌트
+// VIP 가드는 layout.tsx에서 처리하므로 여기선 데이터만 관리
 // ═══════════════════════════════════════════════════════
 export default function PersonasAdminPage() {
-  const router = useRouter();
-
   // ─── 상태 관리 ───
   const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [isVip, setIsVip] = useState(false);
   const [loading, setLoading] = useState(true);
   const [personas, setPersonas] = useState<Persona[]>([]);
 
@@ -102,38 +95,19 @@ export default function PersonasAdminPage() {
     if (data) setPersonas(data as Persona[]);
   }, []);
 
-  // ─── 초기 로딩 + VIP 체크 ───
+  // ─── 초기 데이터 로딩 (VIP 체크는 layout.tsx에서 완료) ───
   useEffect(() => {
     const init = async () => {
+      // 유저 정보만 가져옴 (페르소나 생성 시 user_id 필요)
       const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) setUser(session.user);
 
-      if (!session?.user) {
-        router.push("/login");
-        return;
-      }
-
-      setUser(session.user);
-
-      // VIP 여부 확인
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("is_vip")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!profile?.is_vip) {
-        alert("VIP 전용 페이지입니다.");
-        router.push("/");
-        return;
-      }
-
-      setIsVip(true);
       await fetchPersonas();
       setLoading(false);
     };
 
     init();
-  }, [router, fetchPersonas]);
+  }, [fetchPersonas]);
 
   // ─── AUTO/MANUAL 토글 ───
   // 목록에서 즉시 모드를 전환하는 핵심 기능
@@ -254,51 +228,39 @@ export default function PersonasAdminPage() {
   // ─── 로딩 ───
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
-
-  if (!isVip) return null;
 
   // 통계 계산
   const autoCount = personas.filter((p) => p.mode === "AUTO").length;
   const manualCount = personas.filter((p) => p.mode === "MANUAL").length;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6">
+    <div>
       {/* ═══════════════════════════════════════════ */}
-      {/* 페이지 헤더                                  */}
+      {/* 페이지 서브헤더 + 생성 버튼                    */}
       {/* ═══════════════════════════════════════════ */}
-      <div className="mb-6">
-        <Link
-          href="/"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          홈으로 돌아가기
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
-              <Bot className="h-6 w-6 text-primary" />
-              AI 페르소나 관리
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              커뮤니티를 활성화할 AI NPC를 관리합니다.
-            </p>
-          </div>
-
-          <button
-            onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4" />
-            새 페르소나
-          </button>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
+            <Bot className="h-5 w-5 text-primary" />
+            AI 페르소나 관리
+          </h2>
+          <p className="mt-0.5 text-sm text-muted">
+            커뮤니티를 활성화할 AI NPC를 관리합니다.
+          </p>
         </div>
+
+        <button
+          onClick={openCreateModal}
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-black transition-colors hover:bg-primary-hover"
+        >
+          <Plus className="h-4 w-4" />
+          새 페르소나
+        </button>
       </div>
 
       {/* ═══════════════════════════════════════════ */}
@@ -396,7 +358,7 @@ export default function PersonasAdminPage() {
 
                 {/* 우측: 토글 + 액션 버튼 */}
                 <div className="flex shrink-0 items-center gap-2">
-                  {/* ★ AUTO/MANUAL 토글 스위치 — 핵심 UI ★ */}
+                  {/* AUTO/MANUAL 토글 스위치 */}
                   <button
                     onClick={() => handleToggleMode(persona)}
                     className={`relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
@@ -443,7 +405,7 @@ export default function PersonasAdminPage() {
       )}
 
       {/* ═══════════════════════════════════════════ */}
-      {/* 페르소나 생성/수정 모달 (스텝 3)              */}
+      {/* 페르소나 생성/수정 모달                        */}
       {/* ═══════════════════════════════════════════ */}
       {showModal && (
         <div

@@ -167,13 +167,13 @@ export default function Header() {
                 <Bell className="h-5 w-5" />
               </button>
 
-              {/* VIP 전용: 어드민 설정 버튼 — 일반 유저에게는 보이지 않음 */}
+              {/* VIP 전용: 어드민 대시보드 버튼 — 일반 유저에게는 보이지 않음 */}
               {isVip && (
                 <a
-                  href="/admin/sort"
+                  href="/admin"
                   className="flex items-center gap-1.5 rounded-full border border-primary/30 px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:border-primary hover:bg-primary/10 hover:text-primary"
-                  aria-label="어드민 설정"
-                  title="순서 관리 (VIP 전용)"
+                  aria-label="어드민 대시보드"
+                  title="어드민 대시보드 (VIP 전용)"
                 >
                   <Settings className="h-4 w-4" />
                   <span className="hidden text-xs font-bold text-primary sm:inline">

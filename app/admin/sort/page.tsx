@@ -1,26 +1,21 @@
 // 파일 위치: app/admin/sort/page.tsx
-// 용도: VIP 전용 관리 페이지 — 커뮤니티 & 카테고리 순서를 드래그 앤 드롭으로 변경
-// 접근 제한: VIP(is_vip === true)인 유저만 사용 가능
+// 용도: 커뮤니티 & 카테고리 순서를 드래그 앤 드롭으로 변경
+// VIP 가드: layout.tsx에서 통합 처리 (이 파일에서는 불필요)
 // 라이브러리: @dnd-kit (core + sortable + utilities)
 // 브랜드: 형광 그린 #73e346 계열 다크 테마
 
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
 import {
-  ArrowLeft,
   Loader2,
   Save,
   GripVertical,
   Users,
   Hash,
-  Shield,
   CheckCircle2,
 } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
 
 // ─── dnd-kit 임포트 ───
 import {
@@ -175,13 +170,10 @@ function SortableCategoryItem({ category, index }: { category: Category; index: 
 
 // ═══════════════════════════════════════════════════════
 // 메인 관리 페이지 컴포넌트
+// VIP 가드는 layout.tsx에서 처리하므로 여기선 데이터만 관리
 // ═══════════════════════════════════════════════════════
 export default function AdminSortPage() {
-  const router = useRouter();
-
   // ─── 상태 관리 ───
-  const [user, setUser] = useState<User | null>(null);
-  const [isVip, setIsVip] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // 커뮤니티 & 카테고리 목록 (드래그로 순서 변경됨)
@@ -224,43 +216,10 @@ export default function AdminSortPage() {
     if (catData) setCategories(catData as Category[]);
   }, []);
 
-  // ─── 초기 로딩 + VIP 체크 ───
+  // ─── 초기 데이터 로딩 (VIP 체크는 layout.tsx에서 완료) ───
   useEffect(() => {
-    const init = async () => {
-      // 유저 세션 확인
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session?.user) {
-        // 로그인 안 됨 → 로그인 페이지로
-        router.push("/login");
-        return;
-      }
-
-      setUser(session.user);
-
-      // VIP 여부 확인
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("is_vip")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!profile?.is_vip) {
-        // VIP가 아님 → 홈으로 돌려보내기
-        alert("VIP 전용 페이지입니다.");
-        router.push("/");
-        return;
-      }
-
-      setIsVip(true);
-
-      // 데이터 로드
-      await fetchData();
-      setLoading(false);
-    };
-
-    init();
-  }, [router, fetchData]);
+    fetchData().then(() => setLoading(false));
+  }, [fetchData]);
 
   // ─── 커뮤니티 드래그 종료 핸들러 ───
   // 드래그가 끝나면 배열 순서를 바꿔서 화면에 즉시 반영
@@ -332,79 +291,65 @@ export default function AdminSortPage() {
   // ─── 로딩 화면 ───
   if (loading) {
     return (
-      <div className="flex min-h-[calc(100vh-48px)] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
 
-  // ─── VIP 아님 (혹시 모를 방어) ───
-  if (!isVip) return null;
-
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
+    <div>
       {/* ═══════════════════════════════════════════ */}
-      {/* 페이지 헤더                                  */}
+      {/* 페이지 서브헤더 + 저장 버튼                    */}
       {/* ═══════════════════════════════════════════ */}
-      <div className="mb-6">
-        <Link
-          href="/"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          홈으로 돌아가기
-        </Link>
-
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-foreground">
-              <Shield className="h-5 w-5 text-primary" />
-              순서 관리
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              항목을 드래그하여 사이드바 표시 순서를 변경하세요.
-            </p>
-          </div>
-
-          {/* 저장 버튼 */}
-          <button
-            onClick={handleSaveAll}
-            disabled={saving}
-            className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-              saveSuccess
-                ? "bg-green-600 text-white"
-                : "bg-primary text-black hover:bg-primary-hover"
-            }`}
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                저장 중...
-              </>
-            ) : saveSuccess ? (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                저장 완료!
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                순서 저장
-              </>
-            )}
-          </button>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">
+            사이드바 순서 관리
+          </h2>
+          <p className="mt-0.5 text-sm text-muted">
+            항목을 드래그하여 사이드바 표시 순서를 변경하세요.
+          </p>
         </div>
+
+        {/* 저장 버튼 */}
+        <button
+          onClick={handleSaveAll}
+          disabled={saving}
+          className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            saveSuccess
+              ? "bg-green-600 text-white"
+              : "bg-primary text-black hover:bg-primary-hover"
+          }`}
+        >
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              저장 중...
+            </>
+          ) : saveSuccess ? (
+            <>
+              <CheckCircle2 className="h-4 w-4" />
+              저장 완료!
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              순서 저장
+            </>
+          )}
+        </button>
       </div>
 
       {/* ═══════════════════════════════════════════ */}
       {/* 카테고리 순서 변경                            */}
       {/* ═══════════════════════════════════════════ */}
       <section className="mb-8">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
           <Hash className="h-4 w-4 text-muted" />
           카테고리 순서
           <span className="text-xs font-normal text-muted">({categories.length}개)</span>
-        </h2>
+        </h3>
 
         {categories.length === 0 ? (
           <p className="rounded-lg border border-border-color bg-card-bg px-4 py-8 text-center text-sm text-muted">
@@ -434,11 +379,11 @@ export default function AdminSortPage() {
       {/* 커뮤니티 순서 변경                            */}
       {/* ═══════════════════════════════════════════ */}
       <section className="mb-8">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
           <Users className="h-4 w-4 text-primary/60" />
           커뮤니티 순서
           <span className="text-xs font-normal text-muted">({communities.length}개)</span>
-        </h2>
+        </h3>
 
         {communities.length === 0 ? (
           <p className="rounded-lg border border-border-color bg-card-bg px-4 py-8 text-center text-sm text-muted">
