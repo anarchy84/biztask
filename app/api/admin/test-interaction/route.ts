@@ -330,9 +330,9 @@ async function generateWithGemini(
 ): Promise<string | null> {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  // 🔥 gemini-3-flash: 최신 모델 + systemInstruction 지원
+  // 🔥 gemini-3.1-flash: 최신 모델 + systemInstruction 지원
   const model = genAI.getGenerativeModel({
-    model: "gemini-3-flash",
+    model: "gemini-3.1-flash",
     systemInstruction: systemPrompt,
     generationConfig: { temperature: 0.9, maxOutputTokens: 500 },
   });
@@ -342,7 +342,7 @@ async function generateWithGemini(
   if (text && smellsLikeBot(text)) {
     console.warn(`[Gemini 봇 탐지] 재생성 시도`);
     const retryModel = genAI.getGenerativeModel({
-      model: "gemini-3-flash",
+      model: "gemini-3.1-flash",
       systemInstruction: systemPrompt + `\n\n[긴급] AI 티 났다. 완전 다르게 써.`,
       generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
     });
@@ -399,7 +399,7 @@ async function generateWithAI(
     try {
       console.log(`[AI] Gemini 1.5 Flash 호출 시도...`);
       const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
-      if (result) return { text: result, provider: "gemini-3-flash" };
+      if (result) return { text: result, provider: "gemini-3.1-flash" };
       errors.push(`Gemini: 결과 없음(null)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -926,7 +926,7 @@ export async function POST(request: NextRequest) {
       비전분석: stats.visionCalls,
       저관심스킵: stats.lowRelevance,
       AI제공자: [
-        geminiKey.length > 10 ? "🥇Gemini(3-Flash)" : null,
+        geminiKey.length > 10 ? "🥇Gemini(3.1-Flash)" : null,
         effectiveApiKey.length > 10 ? "🥈Anthropic(Haiku)" : null,
         openaiKey.length > 10 ? "🥉OpenAI(4o-mini)" : null,
       ].filter(Boolean),
