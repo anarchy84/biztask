@@ -23,6 +23,8 @@ import {
   FileText,
   Clock,
   Save,
+  Heart,
+  PenLine,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
@@ -36,10 +38,14 @@ type Persona = {
   personality: string;
   bio: string | null;
   mode: "AUTO" | "MANUAL";
-  frequency: number;
+  frequency: number;               // 레거시 (하위호환)
+  post_frequency: number;          // 일일 게시글 목표 (1~20)
+  comment_frequency: number;       // 일일 댓글 목표 (0~50)
+  like_frequency: number;          // 일일 좋아요 목표 (0~100)
   prompt: string | null;
   total_posts: number;
   total_comments: number;
+  total_likes: number;             // 누적 좋아요 수
   last_active_at: string | null;
   is_active: boolean;
   created_at: string;
@@ -65,7 +71,9 @@ const EMPTY_FORM = {
   personality: "친근한",
   bio: "",
   mode: "MANUAL" as "AUTO" | "MANUAL",
-  frequency: 3,
+  post_frequency: 2,       // 일일 게시글 목표 (기본 2회)
+  comment_frequency: 5,    // 일일 댓글 목표 (기본 5회)
+  like_frequency: 10,      // 일일 좋아요 목표 (기본 10회)
   prompt: "",
 };
 
@@ -150,7 +158,9 @@ export default function PersonasAdminPage() {
       personality: persona.personality,
       bio: persona.bio || "",
       mode: persona.mode,
-      frequency: persona.frequency,
+      post_frequency: persona.post_frequency ?? persona.frequency ?? 2,
+      comment_frequency: persona.comment_frequency ?? 5,
+      like_frequency: persona.like_frequency ?? 10,
       prompt: persona.prompt || "",
     });
     setShowModal(true);
@@ -175,7 +185,9 @@ export default function PersonasAdminPage() {
       personality: form.personality,
       bio: form.bio.trim() || null,
       mode: form.mode,
-      frequency: form.frequency,
+      post_frequency: form.post_frequency,
+      comment_frequency: form.comment_frequency,
+      like_frequency: form.like_frequency,
       prompt: form.prompt.trim() || null,
     };
 
@@ -333,8 +345,8 @@ export default function PersonasAdminPage() {
                     <p className="mt-1 text-xs text-muted line-clamp-1">{persona.bio}</p>
                   )}
 
-                  {/* 통계 */}
-                  <div className="mt-2 flex items-center gap-4 text-[11px] text-muted">
+                  {/* 누적 통계 */}
+                  <div className="mt-2 flex items-center gap-3 text-[11px] text-muted">
                     <span className="flex items-center gap-1">
                       <FileText className="h-3 w-3" />
                       글 {persona.total_posts}
@@ -344,8 +356,14 @@ export default function PersonasAdminPage() {
                       댓글 {persona.total_comments}
                     </span>
                     <span className="flex items-center gap-1">
+                      <Heart className="h-3 w-3" />
+                      좋아요 {persona.total_likes ?? 0}
+                    </span>
+                    <span className="text-border-color">|</span>
+                    {/* 일일 빈도 목표 */}
+                    <span className="flex items-center gap-1 text-primary/70">
                       <Activity className="h-3 w-3" />
-                      일 {persona.frequency}회 목표
+                      일 {persona.post_frequency ?? persona.frequency}글 / {persona.comment_frequency ?? 5}댓 / {persona.like_frequency ?? 10}좋
                     </span>
                     {persona.last_active_at && (
                       <span className="flex items-center gap-1">
@@ -523,57 +541,111 @@ export default function PersonasAdminPage() {
               />
             </div>
 
-            {/* ─── 동작 모드 + 빈도 (나란히) ─── */}
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {/* 모드 선택 */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  동작 모드
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, mode: "AUTO" })}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition-colors ${
-                      form.mode === "AUTO"
-                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                        : "bg-hover-bg text-muted border border-border-color"
-                    }`}
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    AUTO
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, mode: "MANUAL" })}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition-colors ${
-                      form.mode === "MANUAL"
-                        ? "bg-gray-500/20 text-foreground border border-border-color"
-                        : "bg-hover-bg text-muted border border-border-color"
-                    }`}
-                  >
-                    <Pause className="h-3.5 w-3.5" />
-                    MANUAL
-                  </button>
-                </div>
+            {/* ─── 동작 모드 ─── */}
+            <div className="mt-4">
+              <label className="block text-xs font-semibold text-foreground mb-1.5">
+                동작 모드
+              </label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, mode: "AUTO" })}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition-colors ${
+                    form.mode === "AUTO"
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : "bg-hover-bg text-muted border border-border-color"
+                  }`}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  AUTO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, mode: "MANUAL" })}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-xs font-bold transition-colors ${
+                    form.mode === "MANUAL"
+                      ? "bg-gray-500/20 text-foreground border border-border-color"
+                      : "bg-hover-bg text-muted border border-border-color"
+                  }`}
+                >
+                  <Pause className="h-3.5 w-3.5" />
+                  MANUAL
+                </button>
               </div>
+            </div>
 
-              {/* 일일 활동 빈도 */}
-              <div>
-                <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  일일 활동 목표 <span className="text-primary font-bold">{form.frequency}회</span>
-                </label>
+            {/* ─── 인게이지먼트 빈도 설정 (3개 슬라이더) ─── */}
+            <div className="mt-4 rounded-lg border border-border-color bg-hover-bg/30 p-4">
+              <label className="block text-xs font-semibold text-foreground mb-3">
+                일일 활동 목표 설정
+              </label>
+
+              {/* 게시글 빈도 */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
+                    <PenLine className="h-3 w-3 text-blue-400" />
+                    게시글 작성
+                  </span>
+                  <span className="text-xs font-bold text-blue-400">{form.post_frequency}회/일</span>
+                </div>
                 <input
                   type="range"
                   min={1}
                   max={20}
-                  value={form.frequency}
-                  onChange={(e) => setForm({ ...form, frequency: Number(e.target.value) })}
-                  className="mt-2 w-full accent-primary"
+                  value={form.post_frequency}
+                  onChange={(e) => setForm({ ...form, post_frequency: Number(e.target.value) })}
+                  className="w-full accent-blue-400"
                 />
                 <div className="flex justify-between text-[10px] text-muted">
                   <span>1회</span>
                   <span>20회</span>
+                </div>
+              </div>
+
+              {/* 댓글 빈도 */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
+                    <MessageSquare className="h-3 w-3 text-cyan-400" />
+                    댓글 작성
+                  </span>
+                  <span className="text-xs font-bold text-cyan-400">{form.comment_frequency}회/일</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={50}
+                  value={form.comment_frequency}
+                  onChange={(e) => setForm({ ...form, comment_frequency: Number(e.target.value) })}
+                  className="w-full accent-cyan-400"
+                />
+                <div className="flex justify-between text-[10px] text-muted">
+                  <span>0 (안 함)</span>
+                  <span>50회</span>
+                </div>
+              </div>
+
+              {/* 좋아요 빈도 */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="flex items-center gap-1.5 text-xs text-muted">
+                    <Heart className="h-3 w-3 text-pink-400" />
+                    좋아요
+                  </span>
+                  <span className="text-xs font-bold text-pink-400">{form.like_frequency}회/일</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={form.like_frequency}
+                  onChange={(e) => setForm({ ...form, like_frequency: Number(e.target.value) })}
+                  className="w-full accent-pink-400"
+                />
+                <div className="flex justify-between text-[10px] text-muted">
+                  <span>0 (안 함)</span>
+                  <span>100회</span>
                 </div>
               </div>
             </div>

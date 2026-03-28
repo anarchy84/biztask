@@ -16,6 +16,7 @@ import {
   GripVertical,
   Bot,
   Star,
+  Globe,
 } from "lucide-react";
 
 // ─── 어드민 내비게이션 메뉴 정의 ───
@@ -41,6 +42,13 @@ const ADMIN_TABS = [
     icon: Star,
     emoji: "⭐",
     description: "큐레이션 관리",
+  },
+  {
+    label: "외부 콘텐츠 수집",
+    path: "/admin/scrapers",
+    icon: Globe,
+    emoji: "🌐",
+    description: "외부 사이트 크롤링 관리",
   },
 ];
 
