@@ -133,9 +133,39 @@ export default function PersonasAdminPage() {
   // ─── 군단 활동 시뮬레이션 상태 ───
   const [simOpen, setSimOpen] = useState(false);           // 시뮬레이션 패널 열기/닫기
   const [simApiKey, setSimApiKey] = useState("");           // Anthropic API 키 (어드민 입력)
+  const [simApiKeySaved, setSimApiKeySaved] = useState(false); // 저장 완료 피드백
   const [simActions, setSimActions] = useState(5);          // 수행할 액션 수
   const [simRunning, setSimRunning] = useState(false);      // 실행 중 여부
   const [simResults, setSimResults] = useState<SimResult | null>(null); // 실행 결과
+
+  // ─── 페이지 로드 시 저장된 API 키 불러오기 ───
+  useEffect(() => {
+    try {
+      const savedKey = localStorage.getItem("biztask_anthropic_api_key");
+      if (savedKey) {
+        setSimApiKey(savedKey);
+        setSimApiKeySaved(true);
+      }
+    } catch {
+      // localStorage 접근 불가 시 무시
+    }
+  }, []);
+
+  // ─── API 키 저장 핸들러 ───
+  const handleSaveApiKey = () => {
+    try {
+      if (simApiKey.trim()) {
+        localStorage.setItem("biztask_anthropic_api_key", simApiKey.trim());
+      } else {
+        localStorage.removeItem("biztask_anthropic_api_key");
+      }
+      setSimApiKeySaved(true);
+      // 3초 후 피드백 숨기기
+      setTimeout(() => setSimApiKeySaved(false), 3000);
+    } catch {
+      alert("키 저장에 실패했습니다.");
+    }
+  };
 
   // ─── 페르소나 목록 불러오기 ───
   const fetchPersonas = useCallback(async () => {
@@ -415,21 +445,44 @@ export default function PersonasAdminPage() {
         {/* 펼쳐지는 내용 */}
         {simOpen && (
           <div className="border-t border-orange-500/10 px-4 py-4 space-y-4">
-            {/* API 키 입력 */}
+            {/* API 키 입력 + 저장 */}
             <div>
               <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground mb-1.5">
                 <Key className="h-3 w-3 text-amber-400" />
                 Anthropic API Key <span className="text-muted font-normal">(선택 — 없으면 템플릿 모드)</span>
               </label>
-              <input
-                type="password"
-                value={simApiKey}
-                onChange={(e) => setSimApiKey(e.target.value)}
-                placeholder="sk-ant-api03-..."
-                className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2 text-sm text-foreground placeholder-muted focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={simApiKey}
+                  onChange={(e) => { setSimApiKey(e.target.value); setSimApiKeySaved(false); }}
+                  placeholder="sk-ant-api03-..."
+                  className="flex-1 rounded-lg border border-border-color bg-input-bg px-3 py-2 text-sm text-foreground placeholder-muted focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono"
+                />
+                <button
+                  onClick={handleSaveApiKey}
+                  className={`shrink-0 rounded-lg px-4 py-2 text-xs font-bold transition-all ${
+                    simApiKeySaved
+                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      : "bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500/25"
+                  }`}
+                >
+                  {simApiKeySaved ? (
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      저장됨
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1">
+                      <Save className="h-3.5 w-3.5" />
+                      저장
+                    </span>
+                  )}
+                </button>
+              </div>
               <p className="mt-1 text-[10px] text-muted">
                 {simApiKey ? "✅ AI 모드 (Claude가 자연스러운 텍스트 생성)" : "📝 템플릿 모드 (미리 정의된 텍스트 사용)"}
+                {simApiKey && " · 저장하면 다음에 다시 입력할 필요 없어요"}
               </p>
             </div>
 
