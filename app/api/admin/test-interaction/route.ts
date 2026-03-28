@@ -103,6 +103,22 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// ─── 유틸: 중복 방지 랜덤 뽑기 ───
+// 최근 사용한 인덱스를 기억해서 같은 템플릿이 반복되지 않게 함
+const usedTemplateIndices = new Set<number>();
+function pickUniqueRandom<T>(arr: T[]): T {
+  // 모두 소진했으면 리셋
+  if (usedTemplateIndices.size >= arr.length) {
+    usedTemplateIndices.clear();
+  }
+  let idx: number;
+  do {
+    idx = Math.floor(Math.random() * arr.length);
+  } while (usedTemplateIndices.has(idx));
+  usedTemplateIndices.add(idx);
+  return arr[idx];
+}
+
 // ─── 유틸: 템플릿 문자열에 변수 치환 ───
 function fillTemplate(template: string, vars: Record<string, string>): string {
   let result = template;
@@ -471,8 +487,8 @@ export async function POST(request: NextRequest) {
         }
 
         if (!title || !content) {
-          title = fillTemplate(pickRandom(TEMPLATE_TITLES), vars);
-          content = fillTemplate(pickRandom(TEMPLATE_CONTENTS), vars);
+          title = fillTemplate(pickUniqueRandom(TEMPLATE_TITLES), vars);
+          content = fillTemplate(pickUniqueRandom(TEMPLATE_CONTENTS), vars);
         }
 
         const { data: newPost, error: postError } = await supabase
@@ -833,8 +849,8 @@ export async function GET(request: NextRequest) {
           }
         }
         if (!title || !content) {
-          title = fillTemplate(pickRandom(TEMPLATE_TITLES), vars);
-          content = fillTemplate(pickRandom(TEMPLATE_CONTENTS), vars);
+          title = fillTemplate(pickUniqueRandom(TEMPLATE_TITLES), vars);
+          content = fillTemplate(pickUniqueRandom(TEMPLATE_CONTENTS), vars);
         }
 
         const { data: newPost, error: postError } = await supabase

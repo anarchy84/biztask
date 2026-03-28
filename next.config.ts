@@ -13,11 +13,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         // Supabase Storage 이미지 (프로필 아바타, 게시글 첨부 이미지)
+        // search 필드 생략 → 쿼리 파라미터(?t=...) 포함 URL도 허용
         protocol: "https",
         hostname: "dqyfrzrqfhdxwgokrwii.supabase.co",
         port: "",
         pathname: "/storage/v1/object/public/**",
-        search: "",
       },
       {
         // Unsplash 이미지 (OG 메타 이미지 등에 사용)
@@ -25,7 +25,6 @@ const nextConfig: NextConfig = {
         hostname: "images.unsplash.com",
         port: "",
         pathname: "/**",
-        search: "",
       },
     ],
   },
