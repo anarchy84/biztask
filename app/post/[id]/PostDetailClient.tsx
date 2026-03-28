@@ -29,8 +29,10 @@ import {
   Crown,
   Flame,
   FileText,
+  Drama,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
+import { useImpersonation } from "@/app/context/ImpersonationContext";
 
 // ─── 타입 정의 ───
 type ProfileInfo = {
@@ -107,6 +109,9 @@ export default function PostDetailClient() {
   const params = useParams();
   const postId = params.id as string;
   const router = useRouter();
+
+  // ─── 빙의(Impersonation) 전역 상태 ───
+  const { impersonating, isImpersonating } = useImpersonation();
 
   // ─── 상태 관리 ───
   const [post, setPost] = useState<PostDetail | null>(null);
@@ -356,10 +361,15 @@ export default function PostDetailClient() {
         await supabase.from("profiles").insert({ id: user.id, nickname });
       }
 
+      // ─── 빙의 모드: NPC의 user_id를 댓글 작성자로 사용 ───
+      const effectiveUserId = isImpersonating && impersonating
+        ? impersonating.user_id
+        : user.id;
+
       // 댓글 삽입
       const { error: insertError } = await supabase.from("comments").insert({
         post_id: postId,
-        user_id: user.id,
+        user_id: effectiveUserId,
         content: commentText.trim(),
       });
 
@@ -850,9 +860,24 @@ export default function PostDetailClient() {
                 {commentError}
               </div>
             )}
+            {/* 빙의 모드 안내 (NPC로 댓글 작성 중일 때) */}
+            {isImpersonating && impersonating && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-xs text-amber-300">
+                <Drama className="h-3.5 w-3.5 shrink-0" />
+                <span>&apos;{impersonating.nickname}&apos; 명의로 댓글을 작성합니다</span>
+              </div>
+            )}
             <div className="flex gap-3">
-              {/* 유저 아바타 (프로필 이미지 또는 이니셜) */}
-              {myAvatarUrl ? (
+              {/* 유저 아바타 — 빙의 중이면 NPC 아바타 표시 */}
+              {isImpersonating && impersonating ? (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-xs font-bold text-amber-300 ring-2 ring-amber-500/30">
+                  {impersonating.avatar_url ? (
+                    <img src={impersonating.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    impersonating.nickname.charAt(0)
+                  )}
+                </div>
+              ) : myAvatarUrl ? (
                 <Image
                   src={myAvatarUrl}
                   alt="내 프로필"

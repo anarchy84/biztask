@@ -9,10 +9,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/utils/supabase/client";
-import { Search, User, Bell, PenSquare, LogOut, Settings } from "lucide-react";
+import { Search, User, Bell, PenSquare, LogOut, Settings, Drama, X } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { useImpersonation } from "@/app/context/ImpersonationContext";
 
 export default function Header() {
+  // ─── 빙의(Impersonation) 전역 상태 ───
+  const { impersonating, stopImpersonation, isImpersonating } = useImpersonation();
+
   // ─── 상태 관리 ───
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +118,46 @@ export default function Header() {
   const displayName = nickname || user?.email || "";
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border-color bg-header-bg">
+    <>
+      {/* ═══════════════════════════════════════════ */}
+      {/* 🎭 빙의 상태 배너 — Header 위에 고정 표시    */}
+      {/* 빙의 중일 때만 보이는 스티키 알림 바           */}
+      {/* ═══════════════════════════════════════════ */}
+      {isImpersonating && impersonating && (
+        <div className="sticky top-0 z-[60] border-b border-amber-500/30 bg-gradient-to-r from-amber-900/90 via-amber-800/90 to-amber-900/90 backdrop-blur-sm">
+          <div className="mx-auto flex h-10 max-w-7xl items-center justify-between px-4 md:px-8">
+            <div className="flex items-center gap-2.5">
+              {/* 아바타 */}
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/25 text-xs font-bold text-amber-200">
+                {impersonating.avatar_url ? (
+                  <img src={impersonating.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  impersonating.nickname.charAt(0)
+                )}
+              </div>
+              {/* 빙의 안내 텍스트 */}
+              <span className="flex items-center gap-1.5 text-sm font-bold text-amber-200">
+                <Drama className="h-4 w-4" />
+                현재 &apos;{impersonating.nickname}&apos;으로 활동 중
+              </span>
+              {/* 업종/성격 태그 */}
+              <span className="hidden rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300/70 sm:inline">
+                {impersonating.industry} · {impersonating.personality}
+              </span>
+            </div>
+            {/* 복귀하기 버튼 */}
+            <button
+              onClick={stopImpersonation}
+              className="flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-amber-500/15 px-3 py-1 text-xs font-bold text-amber-200 transition-colors hover:bg-amber-500/25 hover:border-amber-400/50"
+            >
+              <X className="h-3 w-3" />
+              복귀하기
+            </button>
+          </div>
+        </div>
+      )}
+
+    <header className={`sticky ${isImpersonating ? "top-10" : "top-0"} z-50 border-b border-border-color bg-header-bg`}>
       {/* max-w-7xl + px-4/md:px-8 → 메인 콘텐츠와 동일한 규격 */}
       <nav className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 md:px-8">
         {/* 좌측: 로고 */}
@@ -234,5 +277,6 @@ export default function Header() {
         </div>
       </nav>
     </header>
+    </>
   );
 }

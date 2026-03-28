@@ -5,6 +5,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/app/components/Header";
+import ClientProviders from "@/app/components/ClientProviders";
 import "./globals.css";
 
 // Google 폰트 설정 (Geist 산세리프 + 모노스페이스)
@@ -85,11 +86,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className="min-h-full flex flex-col antialiased">
-        {/* 상단 네비게이션 바 (로그인 상태 자동 감지) */}
-        <Header />
+        {/* 전역 Client Provider (빙의 시스템 등) */}
+        <ClientProviders>
+          {/* 상단 네비게이션 바 (로그인 상태 자동 감지) */}
+          <Header />
 
-        {/* 메인 콘텐츠 영역 (각 페이지가 여기에 렌더링됨) */}
-        <main className="flex-1">{children}</main>
+          {/* 메인 콘텐츠 영역 (각 페이지가 여기에 렌더링됨) */}
+          <main className="flex-1">{children}</main>
+        </ClientProviders>
       </body>
     </html>
   );

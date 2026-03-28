@@ -33,8 +33,10 @@ import {
   ShieldCheck,
   Lock,
   ChevronDown,
+  Drama,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
+import { useImpersonation } from "@/app/context/ImpersonationContext";
 
 // ─── 카테고리 옵션 목록 ───
 const CATEGORIES = ["자유", "사업", "마케팅", "커리어"];
@@ -98,6 +100,10 @@ export default function SubmitPage() {
 function SubmitForm() {
   const searchParams = useSearchParams();
   const communityIdFromUrl = searchParams.get("community"); // URL ?community=ID
+
+  // ─── 빙의(Impersonation) 전역 상태 ───
+  // 빙의 중이면 NPC의 user_id를 author_id로 사용
+  const { impersonating, isImpersonating } = useImpersonation();
 
   // ─── 상태 관리 ───
   const [user, setUser] = useState<User | null>(null);
@@ -487,8 +493,15 @@ function SubmitForm() {
       // 3단계: 게시글 저장
       // 이미지 URL은 image_urls JSONB 컬럼에 별도 저장 (본문과 분리)
       // 커뮤니티가 선택되었으면 community_id도 함께 저장
+      // ─── 빙의 모드: NPC의 user_id를 author_id로 사용 ───
+      // 빙의 중이면 impersonating.user_id를 사용하여 해당 NPC 명의로 게시
+      // 일반 모드면 로그인한 유저 자신의 ID 사용
+      const effectiveAuthorId = isImpersonating && impersonating
+        ? impersonating.user_id
+        : user.id;
+
       const insertData: Record<string, unknown> = {
-        author_id: user.id,
+        author_id: effectiveAuthorId,
         title: title.trim(),
         content: content.trim(),
         category,
@@ -564,6 +577,21 @@ function SubmitForm() {
           </span>
         )}
       </div>
+
+      {/* 🎭 빙의 모드 안내 배너 (NPC로 빙의 중일 때만 표시) */}
+      {isImpersonating && impersonating && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <Drama className="h-5 w-5 shrink-0 text-amber-300" />
+          <div>
+            <p className="text-sm font-bold text-amber-200">
+              🎭 &apos;{impersonating.nickname}&apos; 명의로 글을 작성합니다
+            </p>
+            <p className="text-[11px] text-amber-400/60">
+              이 글은 {impersonating.nickname}({impersonating.industry}) 캐릭터의 게시물로 등록됩니다.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 글쓰기 카드 (다크 테마) */}
       <div className="rounded-xl border border-border-color bg-card-bg p-6">

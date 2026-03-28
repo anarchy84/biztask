@@ -25,8 +25,11 @@ import {
   Save,
   Heart,
   PenLine,
+  Drama,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { useImpersonation } from "@/app/context/ImpersonationContext";
+import type { ImpersonatedPersona } from "@/app/context/ImpersonationContext";
 
 // ─── 페르소나 타입 정의 ───
 type Persona = {
@@ -82,6 +85,9 @@ const EMPTY_FORM = {
 // VIP 가드는 layout.tsx에서 처리하므로 여기선 데이터만 관리
 // ═══════════════════════════════════════════════════════
 export default function PersonasAdminPage() {
+  // ─── 빙의(Impersonation) 전역 상태 ───
+  const { impersonating, startImpersonation, stopImpersonation, isImpersonating } = useImpersonation();
+
   // ─── 상태 관리 ───
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,6 +243,25 @@ export default function PersonasAdminPage() {
     }
   };
 
+  // ─── 빙의하기/복귀하기 핸들러 ───
+  const handleImpersonate = (persona: Persona) => {
+    // 이미 같은 페르소나로 빙의 중이면 해제
+    if (impersonating?.id === persona.id) {
+      stopImpersonation();
+      return;
+    }
+    // 빙의에 필요한 최소 정보만 전달
+    const impersonateData: ImpersonatedPersona = {
+      id: persona.id,
+      user_id: persona.user_id,
+      nickname: persona.nickname,
+      avatar_url: persona.avatar_url,
+      industry: persona.industry,
+      personality: persona.personality,
+    };
+    startImpersonation(impersonateData);
+  };
+
   // ─── 로딩 ───
   if (loading) {
     return (
@@ -292,6 +317,37 @@ export default function PersonasAdminPage() {
           <p className="text-xs text-muted">MANUAL 대기</p>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* 빙의 상태 알림 배너 (빙의 중일 때만 표시)         */}
+      {/* ═══════════════════════════════════════════ */}
+      {isImpersonating && impersonating && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20 text-sm font-bold text-amber-300">
+              {impersonating.avatar_url ? (
+                <img src={impersonating.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+              ) : (
+                impersonating.nickname.charAt(0)
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-300">
+                🎭 &apos;{impersonating.nickname}&apos;으로 빙의 중
+              </p>
+              <p className="text-[11px] text-amber-400/60">
+                이 상태에서 글/댓글을 작성하면 해당 NPC 명의로 게시됩니다.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={stopImpersonation}
+            className="rounded-lg border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-bold text-amber-300 transition-colors hover:bg-amber-500/25"
+          >
+            복귀하기
+          </button>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════ */}
       {/* 페르소나 목록                                 */}
@@ -374,8 +430,22 @@ export default function PersonasAdminPage() {
                   </div>
                 </div>
 
-                {/* 우측: 토글 + 액션 버튼 */}
+                {/* 우측: 빙의 + 토글 + 액션 버튼 */}
                 <div className="flex shrink-0 items-center gap-2">
+                  {/* 🎭 빙의하기 버튼 — 이 NPC로 글/댓글 작성 모드 진입 */}
+                  <button
+                    onClick={() => handleImpersonate(persona)}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+                      impersonating?.id === persona.id
+                        ? "bg-amber-500/25 text-amber-300 border border-amber-500/40 hover:bg-amber-500/35 shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                        : "bg-amber-500/10 text-amber-400/70 border border-amber-500/20 hover:bg-amber-500/20 hover:text-amber-300"
+                    }`}
+                    title={impersonating?.id === persona.id ? "빙의 해제" : `'${persona.nickname}'으로 빙의`}
+                  >
+                    <Drama className="h-3.5 w-3.5" />
+                    {impersonating?.id === persona.id ? "빙의 중" : "빙의하기"}
+                  </button>
+
                   {/* AUTO/MANUAL 토글 스위치 */}
                   <button
                     onClick={() => handleToggleMode(persona)}
