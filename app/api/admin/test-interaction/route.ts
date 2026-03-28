@@ -1,13 +1,16 @@
 // 파일 위치: app/api/admin/test-interaction/route.ts
 // 용도: NPC 군단 대규모 상호작용 테스트 API
 // 기능:
-//   1. 랜덤 NPC가 게시글 작성 (AI 또는 템플릿 기반)
-//   2. 랜덤 NPC가 최근 글에 댓글 달기 (아나키 글 우선)
-//   3. 랜덤 NPC가 최근 글에 추천(upvote) 누르기
+//   1. NPC별 개별 유저 계정 자동 생성 (첫 실행 시)
+//   2. 랜덤 NPC가 게시글 작성 (AI 또는 템플릿 기반)
+//   3. 랜덤 NPC가 최근 글에 댓글 달기 (아나키 글 우선)
+//   4. 랜덤 NPC가 최근 글에 추천(upvote) 누르기
+//   5. 액션 사이에 자연스러운 딜레이 (2~5초)
 // 보안: Service Role Key로 RLS 우회 (서버에서만 실행)
 
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/utils/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // ─── 타입 정의 ───
 interface Persona {
@@ -25,7 +28,7 @@ interface Persona {
 }
 
 interface ActionResult {
-  action: string;       // "post" | "comment" | "upvote"
+  action: string;       // "post" | "comment" | "upvote" | "setup"
   persona: string;      // NPC 닉네임
   success: boolean;
   detail: string;       // 수행 내용 요약
@@ -88,6 +91,12 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
   return result;
 }
 
+// ─── 유틸: 자연스러운 딜레이 (2~5초 랜덤) ───
+function randomDelay(): Promise<void> {
+  const ms = 2000 + Math.random() * 3000; // 2초~5초
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ─── AI 텍스트 생성 (Anthropic Claude API) ───
 async function generateWithAI(
   apiKey: string,
@@ -95,7 +104,6 @@ async function generateWithAI(
   userPrompt: string
 ): Promise<string | null> {
   try {
-    // 동적 import로 Anthropic SDK 로드 (서버에서만 실행)
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey });
 
@@ -106,13 +114,93 @@ async function generateWithAI(
       messages: [{ role: "user", content: userPrompt }],
     });
 
-    // 텍스트 블록만 추출
     const textBlock = message.content.find((b) => b.type === "text");
     return textBlock ? textBlock.text : null;
   } catch (error) {
     console.error("[AI 생성 실패]", error);
-    return null; // 실패 시 null → 템플릿으로 폴백
+    return null;
   }
+}
+
+// ═══════════════════════════════════════════════════════
+// NPC 개별 유저 계정 자동 생성
+// - 모든 NPC가 관리자(아나키) user_id를 공유하고 있으면
+//   각 NPC에게 개별 auth 계정 + profiles 행을 만들어줌
+// ═══════════════════════════════════════════════════════
+async function ensureNpcUsers(
+  supabase: SupabaseClient,
+  personas: Persona[],
+  adminUserId: string
+): Promise<ActionResult[]> {
+  const results: ActionResult[] = [];
+
+  // 관리자 ID와 같은 user_id를 가진 NPC만 처리 (이미 개별 계정이 있으면 스킵)
+  const needsSetup = personas.filter((p) => p.user_id === adminUserId);
+  if (needsSetup.length === 0) return results;
+
+  console.log(`[NPC 셋업] ${needsSetup.length}명의 NPC에게 개별 계정 생성 시작`);
+
+  for (const persona of needsSetup) {
+    try {
+      // 1) Supabase Admin API로 auth 유저 생성
+      const fakeEmail = `npc_${persona.id.slice(0, 8)}@biztask.local`;
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: fakeEmail,
+        password: `npc_${crypto.randomUUID()}`, // 랜덤 비밀번호 (로그인 불필요)
+        email_confirm: true,
+        user_metadata: {
+          nickname: persona.nickname,
+          is_npc: true,
+        },
+      });
+
+      if (authError || !authData?.user) {
+        results.push({
+          action: "setup",
+          persona: persona.nickname,
+          success: false,
+          detail: `계정 생성 실패`,
+          error: authError?.message || "auth user 생성 실패",
+        });
+        continue;
+      }
+
+      const newUserId = authData.user.id;
+
+      // 2) profiles 테이블에 NPC 프로필 생성 (upsert)
+      await supabase.from("profiles").upsert({
+        id: newUserId,
+        nickname: persona.nickname,
+        avatar_url: persona.avatar_url,
+      });
+
+      // 3) personas 테이블의 user_id를 새 계정으로 변경
+      await supabase
+        .from("personas")
+        .update({ user_id: newUserId })
+        .eq("id", persona.id);
+
+      // 메모리에도 반영 (이후 로직에서 새 user_id 사용하도록)
+      persona.user_id = newUserId;
+
+      results.push({
+        action: "setup",
+        persona: persona.nickname,
+        success: true,
+        detail: `개별 계정 생성 완료 (${newUserId.slice(0, 8)}...)`,
+      });
+    } catch (err) {
+      results.push({
+        action: "setup",
+        persona: persona.nickname,
+        success: false,
+        detail: `계정 생성 중 예외 발생`,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return results;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -130,7 +218,7 @@ export async function POST(request: NextRequest) {
 
     // API 키: 요청 바디에서 받은 키 → 환경변수 순으로 체크
     const effectiveApiKey = anthropicApiKey || process.env.ANTHROPIC_API_KEY || "";
-    const useAI = effectiveApiKey.length > 10; // AI 사용 여부
+    const useAI = effectiveApiKey.length > 10;
 
     // ─── Service Role Supabase 클라이언트 생성 ───
     const supabase = createAdminSupabaseClient();
@@ -138,7 +226,7 @@ export async function POST(request: NextRequest) {
     // ─── 활성 NPC 페르소나 목록 가져오기 ───
     const { data: personas, error: personaError } = await supabase
       .from("personas")
-      .select("id, user_id, nickname, avatar_url, industry, personality, prompt, is_active")
+      .select("id, user_id, nickname, avatar_url, industry, personality, prompt, is_active, total_posts, total_comments, total_likes")
       .eq("is_active", true);
 
     if (personaError || !personas || personas.length === 0) {
@@ -148,263 +236,213 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const results: ActionResult[] = [];
+
+    // ═══════════════════════════════════
+    // 0) NPC 개별 유저 계정 셋업 (첫 실행 시에만)
+    // ═══════════════════════════════════
+    if (anakiUserId) {
+      const setupResults = await ensureNpcUsers(supabase, personas as Persona[], anakiUserId);
+      results.push(...setupResults);
+    }
+
     // ─── 최근 게시글 목록 가져오기 (댓글/추천 대상) ───
     const { data: recentPosts } = await supabase
       .from("posts")
-      .select("id, author_id, title, category")
+      .select("id, author_id, title, category, upvotes, comment_count")
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(30);
 
     // 아나키 글 분리 (우선 댓글 대상)
     const anakiPosts = recentPosts?.filter((p) => p.author_id === anakiUserId) || [];
     const allPosts = recentPosts || [];
 
-    // ─── 액션 분배: 글쓰기 30%, 댓글 40%, 추천 30% ───
-    const actionCount = Math.min(actions, 20); // 최대 20개 제한
-    const postCount = Math.max(1, Math.round(actionCount * 0.3));
+    // ─── 액션 분배: 글쓰기 20%, 댓글 40%, 추천 40% ───
+    const actionCount = Math.min(actions, 20);
+    const postCount = Math.max(1, Math.round(actionCount * 0.2));
     const commentCount = Math.max(1, Math.round(actionCount * 0.4));
     const upvoteCount = Math.max(1, actionCount - postCount - commentCount);
 
-    const results: ActionResult[] = [];
+    // ─── 액션을 섞어서 자연스럽게 실행 ───
+    // (글쓰기만 몰아서 하지 않고, 댓글/추천을 섞어서)
+    type ActionItem = { type: "post" } | { type: "comment" } | { type: "upvote" };
+    const actionQueue: ActionItem[] = [];
+    for (let i = 0; i < postCount; i++) actionQueue.push({ type: "post" });
+    for (let i = 0; i < commentCount; i++) actionQueue.push({ type: "comment" });
+    for (let i = 0; i < upvoteCount; i++) actionQueue.push({ type: "upvote" });
 
-    // ═══════════════════════════════════
-    // 1) NPC 글쓰기
-    // ═══════════════════════════════════
-    for (let i = 0; i < postCount; i++) {
-      const persona = pickRandom(personas) as Persona;
-      const category = pickRandom(CATEGORIES);
-      const vars = {
-        nickname: persona.nickname,
-        industry: persona.industry,
-        personality: persona.personality,
-      };
-
-      let title = "";
-      let content = "";
-
-      if (useAI) {
-        // AI로 제목+본문 한번에 생성
-        const systemPrompt = persona.prompt ||
-          `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 분야 전문가입니다. ` +
-          `성격은 ${persona.personality}이고, 비즈니스 커뮤니티에서 활동 중입니다. ` +
-          `자연스럽고 진정성 있는 한국어로 글을 작성하세요.`;
-
-        const aiResult = await generateWithAI(
-          effectiveApiKey,
-          systemPrompt,
-          `비즈니스 커뮤니티에 올릴 '${category}' 카테고리 글을 작성해주세요.\n` +
-          `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
-          `분량: 제목 20자 이내, 본문 100~200자.\n` +
-          `말투: ${persona.personality} 스타일로 자연스럽게.`
-        );
-
-        if (aiResult) {
-          const lines = aiResult.trim().split("\n");
-          title = lines[0].replace(/^#\s*/, "").replace(/^제목[:\s]*/i, "").trim();
-          content = lines.slice(1).join("\n").replace(/^본문[:\s]*/i, "").trim();
-        }
-      }
-
-      // AI 실패 시 또는 AI 미사용 시 → 템플릿 폴백
-      if (!title || !content) {
-        title = fillTemplate(pickRandom(TEMPLATE_TITLES), vars);
-        content = fillTemplate(pickRandom(TEMPLATE_CONTENTS), vars);
-      }
-
-      // DB에 글 삽입
-      const { data: newPost, error: postError } = await supabase
-        .from("posts")
-        .insert({
-          author_id: persona.user_id,
-          title,
-          content,
-          category,
-          upvotes: 0,
-          comment_count: 0,
-        })
-        .select("id")
-        .single();
-
-      if (postError) {
-        results.push({
-          action: "post",
-          persona: persona.nickname,
-          success: false,
-          detail: `글쓰기 실패: ${title}`,
-          error: postError.message,
-        });
-      } else {
-        // 페르소나 통계 업데이트 (total_posts +1)
-        await supabase
-          .from("personas")
-          .update({
-            total_posts: (persona.total_posts ?? 0) + 1,
-            last_active_at: new Date().toISOString(),
-          })
-          .eq("id", persona.id);
-
-        results.push({
-          action: "post",
-          persona: persona.nickname,
-          success: true,
-          detail: `[${category}] "${title}" 작성 완료 (ID: ${newPost?.id?.slice(0, 8)})`,
-        });
-      }
+    // 셔플 (Fisher-Yates)
+    for (let i = actionQueue.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [actionQueue[i], actionQueue[j]] = [actionQueue[j], actionQueue[i]];
     }
 
+    // 새로 생성된 글을 댓글/추천 대상에 추가하기 위한 배열
+    const newPostIds: { id: string; author_id: string; title: string; category: string }[] = [];
+
     // ═══════════════════════════════════
-    // 2) NPC 댓글 달기 (아나키 글 우선)
+    // 메인 루프: 셔플된 액션을 순서대로 실행
     // ═══════════════════════════════════
-    for (let i = 0; i < commentCount; i++) {
-      if (allPosts.length === 0) break; // 글이 없으면 스킵
+    for (let idx = 0; idx < actionQueue.length; idx++) {
+      const action = actionQueue[idx];
 
-      const persona = pickRandom(personas) as Persona;
+      // 첫 액션 이후부터 딜레이 적용
+      if (idx > 0) {
+        await randomDelay();
+      }
 
-      // 50% 확률로 아나키 글에 댓글 (아나키 글이 있을 때)
-      const targetPost =
-        anakiPosts.length > 0 && Math.random() < 0.5
-          ? pickRandom(anakiPosts)
-          : pickRandom(allPosts);
+      if (action.type === "post") {
+        // ─── 글쓰기 ───
+        const persona = pickRandom(personas) as Persona;
+        const category = pickRandom(CATEGORIES);
+        const vars = { nickname: persona.nickname, industry: persona.industry, personality: persona.personality };
 
-      let commentText = "";
+        let title = "";
+        let content = "";
 
-      if (useAI) {
-        const systemPrompt = persona.prompt ||
-          `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
-          `성격: ${persona.personality}. 자연스럽고 짧은 댓글을 작성하세요.`;
+        if (useAI) {
+          const systemPrompt = persona.prompt ||
+            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 분야 전문가입니다. ` +
+            `성격은 ${persona.personality}이고, 비즈니스 커뮤니티에서 활동 중입니다. ` +
+            `자연스럽고 진정성 있는 한국어로 글을 작성하세요.`;
 
-        const aiResult = await generateWithAI(
-          effectiveApiKey,
-          systemPrompt,
-          `'${targetPost.title}' 라는 제목의 글에 달 댓글을 한 줄로 작성해주세요.\n` +
-          `카테고리: ${targetPost.category}\n` +
-          `50자 이내, 자연스럽고 공감하는 톤으로.`
-        );
+          const aiResult = await generateWithAI(
+            effectiveApiKey,
+            systemPrompt,
+            `비즈니스 커뮤니티에 올릴 '${category}' 카테고리 글을 작성해주세요.\n` +
+            `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
+            `분량: 제목 20자 이내, 본문 100~200자.\n` +
+            `말투: ${persona.personality} 스타일로 자연스럽게.`
+          );
 
-        if (aiResult) {
-          commentText = aiResult.trim();
+          if (aiResult) {
+            const lines = aiResult.trim().split("\n");
+            title = lines[0].replace(/^#\s*/, "").replace(/^제목[:\s]*/i, "").trim();
+            content = lines.slice(1).join("\n").replace(/^본문[:\s]*/i, "").trim();
+          }
         }
-      }
 
-      // AI 실패 시 → 템플릿 폴백
-      if (!commentText) {
-        commentText = fillTemplate(pickRandom(TEMPLATE_COMMENTS), {
-          industry: persona.industry,
-          nickname: persona.nickname,
-        });
-      }
+        if (!title || !content) {
+          title = fillTemplate(pickRandom(TEMPLATE_TITLES), vars);
+          content = fillTemplate(pickRandom(TEMPLATE_CONTENTS), vars);
+        }
 
-      // 댓글 삽입
-      const { error: commentError } = await supabase
-        .from("comments")
-        .insert({
-          post_id: targetPost.id,
-          user_id: persona.user_id,
-          content: commentText,
-        });
-
-      if (commentError) {
-        results.push({
-          action: "comment",
-          persona: persona.nickname,
-          success: false,
-          detail: `댓글 실패 → "${targetPost.title}"`,
-          error: commentError.message,
-        });
-      } else {
-        // comment_count 직접 증가 (+1)
-        // RPC 함수가 없을 수 있으므로 직접 업데이트 방식 사용
-        await supabase
+        const { data: newPost, error: postError } = await supabase
           .from("posts")
-          .update({ comment_count: ((targetPost as { comment_count?: number }).comment_count ?? 0) + 1 })
-          .eq("id", targetPost.id);
+          .insert({ author_id: persona.user_id, title, content, category, upvotes: 0, comment_count: 0 })
+          .select("id")
+          .single();
 
-        // 페르소나 통계 업데이트
-        await supabase
-          .from("personas")
-          .update({ last_active_at: new Date().toISOString() })
-          .eq("id", persona.id);
-
-        results.push({
-          action: "comment",
-          persona: persona.nickname,
-          success: true,
-          detail: `"${targetPost.title.slice(0, 20)}..." 에 댓글: "${commentText.slice(0, 30)}..."`,
-        });
-      }
-    }
-
-    // ═══════════════════════════════════
-    // 3) NPC 추천(Upvote) 누르기
-    // ═══════════════════════════════════
-    for (let i = 0; i < upvoteCount; i++) {
-      if (allPosts.length === 0) break;
-
-      const persona = pickRandom(personas) as Persona;
-
-      // 60% 확률로 아나키 글에 추천 (아나키 글이 있을 때)
-      const targetPost =
-        anakiPosts.length > 0 && Math.random() < 0.6
-          ? pickRandom(anakiPosts)
-          : pickRandom(allPosts);
-
-      // 중복 추천 방지: 이미 추천했는지 확인
-      const { data: existingLike } = await supabase
-        .from("post_likes")
-        .select("id")
-        .eq("post_id", targetPost.id)
-        .eq("user_id", persona.user_id)
-        .maybeSingle();
-
-      if (existingLike) {
-        results.push({
-          action: "upvote",
-          persona: persona.nickname,
-          success: false,
-          detail: `"${targetPost.title.slice(0, 20)}..." 이미 추천함 → 스킵`,
-        });
-        continue;
-      }
-
-      // post_likes에 삽입
-      const { error: likeError } = await supabase
-        .from("post_likes")
-        .insert({
-          post_id: targetPost.id,
-          user_id: persona.user_id,
-        });
-
-      if (likeError) {
-        results.push({
-          action: "upvote",
-          persona: persona.nickname,
-          success: false,
-          detail: `추천 실패 → "${targetPost.title.slice(0, 20)}..."`,
-          error: likeError.message,
-        });
-      } else {
-        // upvotes 카운트 증가 — increment_upvotes RPC 사용
-        const { error: rpcError } = await supabase.rpc("increment_upvotes", { row_id: targetPost.id });
-        if (rpcError) {
-          // RPC 실패 시 직접 업데이트 폴백
-          await supabase
-            .from("posts")
-            .update({ upvotes: ((targetPost as { upvotes?: number }).upvotes ?? 0) + 1 })
-            .eq("id", targetPost.id);
+        if (postError) {
+          results.push({ action: "post", persona: persona.nickname, success: false, detail: `글쓰기 실패: ${title}`, error: postError.message });
+        } else {
+          // 새 글을 댓글/추천 후보에 추가
+          if (newPost) {
+            newPostIds.push({ id: newPost.id, author_id: persona.user_id, title, category });
+          }
+          await supabase.from("personas").update({ total_posts: (persona.total_posts ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+          results.push({ action: "post", persona: persona.nickname, success: true, detail: `[${category}] "${title}" 작성 완료` });
         }
 
-        // 페르소나 통계 업데이트
-        await supabase
-          .from("personas")
-          .update({ last_active_at: new Date().toISOString() })
-          .eq("id", persona.id);
+      } else if (action.type === "comment") {
+        // ─── 댓글 달기 ───
+        const availablePosts = [...allPosts, ...newPostIds];
+        if (availablePosts.length === 0) {
+          results.push({ action: "comment", persona: "-", success: false, detail: "댓글 달 글이 없음" });
+          continue;
+        }
 
-        results.push({
-          action: "upvote",
-          persona: persona.nickname,
-          success: true,
-          detail: `"${targetPost.title.slice(0, 20)}..." 추천 완료`,
-        });
+        const persona = pickRandom(personas) as Persona;
+
+        // 50% 확률로 아나키 글에 댓글
+        const targetPost =
+          anakiPosts.length > 0 && Math.random() < 0.5
+            ? pickRandom(anakiPosts)
+            : pickRandom(availablePosts);
+
+        let commentText = "";
+
+        if (useAI) {
+          const systemPrompt = persona.prompt ||
+            `당신은 '${persona.nickname}'이라는 닉네임의 ${persona.industry} 전문가입니다. ` +
+            `성격: ${persona.personality}. 자연스럽고 짧은 댓글을 작성하세요.`;
+
+          const aiResult = await generateWithAI(
+            effectiveApiKey,
+            systemPrompt,
+            `'${targetPost.title}' 라는 제목의 글에 달 댓글을 한 줄로 작성해주세요.\n` +
+            `카테고리: ${targetPost.category}\n` +
+            `50자 이내, 자연스럽고 공감하는 톤으로.`
+          );
+
+          if (aiResult) commentText = aiResult.trim();
+        }
+
+        if (!commentText) {
+          commentText = fillTemplate(pickRandom(TEMPLATE_COMMENTS), { industry: persona.industry, nickname: persona.nickname });
+        }
+
+        const { error: commentError } = await supabase
+          .from("comments")
+          .insert({ post_id: targetPost.id, user_id: persona.user_id, content: commentText });
+
+        if (commentError) {
+          results.push({ action: "comment", persona: persona.nickname, success: false, detail: `댓글 실패 → "${targetPost.title.slice(0, 15)}..."`, error: commentError.message });
+        } else {
+          // comment_count를 직접 +1 업데이트
+          const { data: currentPost } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
+          await supabase.from("posts").update({ comment_count: (currentPost?.comment_count ?? 0) + 1 }).eq("id", targetPost.id);
+
+          await supabase.from("personas").update({ total_comments: (persona.total_comments ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+          results.push({ action: "comment", persona: persona.nickname, success: true, detail: `"${targetPost.title.slice(0, 15)}..." 에 댓글 완료` });
+        }
+
+      } else if (action.type === "upvote") {
+        // ─── 추천(Upvote) ───
+        const availablePosts = [...allPosts, ...newPostIds];
+        if (availablePosts.length === 0) {
+          results.push({ action: "upvote", persona: "-", success: false, detail: "추천할 글이 없음" });
+          continue;
+        }
+
+        const persona = pickRandom(personas) as Persona;
+
+        // 60% 확률로 아나키 글에 추천
+        const targetPost =
+          anakiPosts.length > 0 && Math.random() < 0.6
+            ? pickRandom(anakiPosts)
+            : pickRandom(availablePosts);
+
+        // 중복 추천 방지
+        const { data: existingLike } = await supabase
+          .from("post_likes")
+          .select("id")
+          .eq("post_id", targetPost.id)
+          .eq("user_id", persona.user_id)
+          .maybeSingle();
+
+        if (existingLike) {
+          results.push({ action: "upvote", persona: persona.nickname, success: false, detail: `"${targetPost.title.slice(0, 15)}..." 이미 추천 → 스킵` });
+          continue;
+        }
+
+        const { error: likeError } = await supabase
+          .from("post_likes")
+          .insert({ post_id: targetPost.id, user_id: persona.user_id });
+
+        if (likeError) {
+          results.push({ action: "upvote", persona: persona.nickname, success: false, detail: `추천 실패 → "${targetPost.title.slice(0, 15)}..."`, error: likeError.message });
+        } else {
+          // upvotes +1 (RPC 시도 → 실패 시 직접 업데이트)
+          const { error: rpcError } = await supabase.rpc("increment_upvotes", { row_id: targetPost.id });
+          if (rpcError) {
+            const { data: currentPost } = await supabase.from("posts").select("upvotes").eq("id", targetPost.id).single();
+            await supabase.from("posts").update({ upvotes: (currentPost?.upvotes ?? 0) + 1 }).eq("id", targetPost.id);
+          }
+
+          await supabase.from("personas").update({ total_likes: (persona.total_likes ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
+          results.push({ action: "upvote", persona: persona.nickname, success: true, detail: `"${targetPost.title.slice(0, 15)}..." 추천 완료` });
+        }
       }
     }
 
@@ -413,24 +451,18 @@ export async function POST(request: NextRequest) {
       총액션: results.length,
       성공: results.filter((r) => r.success).length,
       실패: results.filter((r) => !r.success).length,
+      계정생성: results.filter((r) => r.action === "setup" && r.success).length,
       글쓰기: results.filter((r) => r.action === "post" && r.success).length,
       댓글: results.filter((r) => r.action === "comment" && r.success).length,
       추천: results.filter((r) => r.action === "upvote" && r.success).length,
       AI사용: useAI,
     };
 
-    return Response.json({
-      success: true,
-      summary,
-      results,
-    });
+    return Response.json({ success: true, summary, results });
   } catch (error) {
     console.error("[test-interaction] 전체 에러:", error);
     return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "알 수 없는 에러가 발생했습니다.",
-      },
+      { success: false, error: error instanceof Error ? error.message : "알 수 없는 에러가 발생했습니다." },
       { status: 500 }
     );
   }
