@@ -526,6 +526,10 @@ export async function POST(request: NextRequest) {
 
         let commentText = "";
 
+        // ─── SKIP 판단 플래그 ───
+        // AI가 "이 글에 딱히 할 말 없다"고 판단하면 댓글을 달지 않음
+        let shouldSkip = false;
+
         if (useAI) {
           // 대상 글의 본문도 가져오기 (맥락 기반 댓글)
           const { data: postContent } = await supabase
@@ -546,7 +550,7 @@ export async function POST(request: NextRequest) {
             `규칙:\n` +
             `- 글 제목과 본문을 실제로 읽고, 그 내용에 구체적으로 반응할 것\n` +
             `- 글이 유머/짤방이면 "ㅋㅋㅋㅋ" "이거 뭐야ㅋㅋ" 처럼 웃겨하면 됨\n` +
-            `- 글 내용을 잘 모르겠으면 "ㅋㅋㅋ" "오.." "헐" 같은 짧은 반응만 해\n` +
+            `- 글 내용에 대해 네 캐릭터로서 딱히 할 말이 없으면 "SKIP"만 출력해. 억지 댓글보다 스킵이 낫다.\n` +
             `- 절대 글 내용과 무관한 뜬금없는 칭찬/격려 하지 마\n` +
             `- 10~60자. 짧을수록 자연스러움. 한 줄이면 충분\n` +
             `- 네 성격과 말투 100% 반영\n` +
@@ -555,8 +559,23 @@ export async function POST(request: NextRequest) {
             `- 댓글만 출력. 앞뒤 설명/따옴표 붙이지 마`
           );
 
-          if (aiResult.text) commentText = aiResult.text.trim();
+          if (aiResult.text) {
+            const trimmed = aiResult.text.trim();
+            // AI가 SKIP 판단한 경우 → 댓글 달지 않음
+            if (trimmed.toUpperCase() === "SKIP" || trimmed.toUpperCase().startsWith("SKIP")) {
+              shouldSkip = true;
+              console.log(`[SKIP] ${persona.nickname}이(가) "${targetPost.title.slice(0, 20)}..." 글에 할 말 없음 → 패스`);
+            } else {
+              commentText = trimmed;
+            }
+          }
           if (aiResult.error) console.warn(`[AI 댓글 실패] ${persona.nickname}: ${aiResult.error}`);
+        }
+
+        // SKIP이면 댓글 달지 않고 결과만 기록
+        if (shouldSkip) {
+          results.push({ action: "comment", persona: persona.nickname, success: true, detail: `"${targetPost.title.slice(0, 15)}..." 할 말 없음 → SKIP` });
+          continue;
         }
 
         if (!commentText) {
@@ -609,6 +628,8 @@ export async function POST(request: NextRequest) {
         const parentComment = pickRandom(existingComments);
 
         let replyText = "";
+        let shouldSkipReply = false;
+
         if (useAI) {
           const systemPrompt = buildPersonaSystemPrompt(persona);
 
@@ -620,14 +641,28 @@ export async function POST(request: NextRequest) {
             `댓글: "${parentComment.content}"\n\n` +
             `규칙:\n` +
             `- 댓글 내용에 대한 구체적 반응 (동의/반박/드립/질문 등)\n` +
-            `- 모르겠으면 "ㅋㅋ" "ㅇㅈ" "ㄹㅇ" 같은 짧은 반응만 해\n` +
+            `- 이 댓글에 딱히 할 말 없으면 "SKIP"만 출력해. 억지 대댓보다 스킵이 낫다.\n` +
             `- 5~40자. 짧을수록 자연스러움\n` +
             `- 네 성격과 말투 100% 반영\n` +
             `- "좋은 지적이네요" "공감합니다" 같은 봇말 쓰면 실패\n` +
             `- 답글만 출력. 따옴표/설명 붙이지 마`
           );
-          if (aiResult.text) replyText = aiResult.text.trim();
+          if (aiResult.text) {
+            const trimmed = aiResult.text.trim();
+            if (trimmed.toUpperCase() === "SKIP" || trimmed.toUpperCase().startsWith("SKIP")) {
+              shouldSkipReply = true;
+              console.log(`[SKIP] ${persona.nickname}이(가) 대댓글 스킵 → "${parentComment.content.slice(0, 20)}..."`);
+            } else {
+              replyText = trimmed;
+            }
+          }
           if (aiResult.error) console.warn(`[AI 대댓글 실패] ${persona.nickname}: ${aiResult.error}`);
+        }
+
+        // SKIP이면 대댓글 달지 않고 넘어감
+        if (shouldSkipReply) {
+          results.push({ action: "reply", persona: persona.nickname, success: true, detail: `대댓글 할 말 없음 → SKIP` });
+          continue;
         }
 
         if (!replyText) {
@@ -868,12 +903,25 @@ export async function GET(request: NextRequest) {
         const targetPost = anakiPosts.length > 0 && Math.random() < 0.5 ? pickRandom(anakiPosts) : pickRandom(availablePosts);
         let commentText = "";
 
+        let shouldSkipCron = false;
         if (useAI) {
           const { data: postContent } = await supabase.from("posts").select("content").eq("id", targetPost.id).single();
           const aiResult = await generateWithAI(effectiveApiKey, buildPersonaSystemPrompt(persona),
             `다음 글에 댓글을 달아.\n제목: ${targetPost.title}\n본문: ${(postContent?.content || '').slice(0, 300)}\n` +
-            `20~80자, 봇 댓글 금지, 댓글만 출력.`);
-          if (aiResult.text) commentText = aiResult.text.trim();
+            `규칙: 10~60자, 봇 댓글 금지, 댓글만 출력. 글 내용에 딱히 할 말 없으면 "SKIP"만 출력.`);
+          if (aiResult.text) {
+            const trimmed = aiResult.text.trim();
+            if (trimmed.toUpperCase() === "SKIP" || trimmed.toUpperCase().startsWith("SKIP")) {
+              shouldSkipCron = true;
+              console.log(`[CRON SKIP] ${persona.nickname} → "${targetPost.title.slice(0, 20)}..." 패스`);
+            } else {
+              commentText = trimmed;
+            }
+          }
+        }
+        if (shouldSkipCron) {
+          results.push({ action: "comment", persona: persona.nickname, success: true, detail: `SKIP` });
+          continue;
         }
         if (!commentText) {
           commentText = pickRandom(TEMPLATE_COMMENTS);
