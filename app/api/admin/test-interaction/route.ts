@@ -330,8 +330,9 @@ async function generateWithGemini(
 ): Promise<string | null> {
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
+  // 🔥 gemini-3-flash: 최신 모델 + systemInstruction 지원
   const model = genAI.getGenerativeModel({
-    model: "gemini-3-flash", // 텍스트 생성용
+    model: "gemini-3-flash",
     systemInstruction: systemPrompt,
     generationConfig: { temperature: 0.9, maxOutputTokens: 500 },
   });
@@ -384,6 +385,7 @@ async function generateWithOpenAI(
 }
 
 // 메인 생성 함수: 폴백 체인
+// 🔥 순서 변경: Gemini 1순위 (무료!) → Anthropic 2순위 → OpenAI 3순위
 async function generateWithAI(
   _apiKey: string, systemPrompt: string, userPrompt: string
 ): Promise<{ text: string | null; error?: string; provider?: string }> {
@@ -392,40 +394,51 @@ async function generateWithAI(
   const openaiKey = process.env.OPENAI_API_KEY || "";
   const errors: string[] = [];
 
-  if (anthropicKey.length > 10) {
-    try {
-      const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
-      if (result) return { text: result, provider: "anthropic-haiku" };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Anthropic 실패] ${msg.slice(0, 120)}`);
-      errors.push(`Anthropic: ${msg.slice(0, 80)}`);
-    }
-  }
-
+  // 🥇 1순위: Google Gemini (무료 티어, 기름 무한!)
   if (geminiKey.length > 10) {
     try {
+      console.log(`[AI] Gemini 1.5 Flash 호출 시도...`);
       const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
       if (result) return { text: result, provider: "gemini-3-flash" };
+      errors.push(`Gemini: 결과 없음(null)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[Gemini 실패] ${msg.slice(0, 200)}`);
-      errors.push(`Gemini: ${msg.slice(0, 80)}`);
+      errors.push(`Gemini: ${msg.slice(0, 120)}`);
+    }
+  } else {
+    errors.push(`Gemini: API키 미설정`);
+  }
+
+  // 🥈 2순위: Anthropic Claude Haiku (크레딧 있을 때만)
+  if (anthropicKey.length > 10) {
+    try {
+      console.log(`[AI] Anthropic Haiku 호출 시도...`);
+      const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
+      if (result) return { text: result, provider: "anthropic-haiku" };
+      errors.push(`Anthropic: 결과 없음(null)`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Anthropic 실패] ${msg.slice(0, 120)}`);
+      errors.push(`Anthropic: ${msg.slice(0, 120)}`);
     }
   }
 
+  // 🥉 3순위: OpenAI GPT-4o-mini
   if (openaiKey.length > 10) {
     try {
+      console.log(`[AI] OpenAI 호출 시도...`);
       const result = await generateWithOpenAI(openaiKey, systemPrompt, userPrompt);
       if (result) return { text: result, provider: "openai-4o-mini" };
+      errors.push(`OpenAI: 결과 없음(null)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[OpenAI 실패] ${msg.slice(0, 120)}`);
-      errors.push(`OpenAI: ${msg.slice(0, 80)}`);
+      errors.push(`OpenAI: ${msg.slice(0, 120)}`);
     }
   }
 
-  const errorSummary = errors.length > 0 ? errors.join(" | ") : "API키 없음";
+  const errorSummary = errors.length > 0 ? errors.join(" | ") : "API키 전부 미설정";
   console.error(`[AI 전체 실패] ${errorSummary}`);
   return { text: null, error: errorSummary };
 }
@@ -609,6 +622,7 @@ async function executeGritActions(
       let title = "";
       let content = "";
       let provider = "";
+      let lastAiError = "";
 
       if (hasAnyAI) {
         const systemPrompt = buildDynamicSystemPrompt(persona, 80); // 글쓰기는 항상 전문 모드
@@ -628,11 +642,15 @@ async function executeGritActions(
           content = lines.slice(1).join("\n").replace(/^본문[:\s]*/i, "").trim();
           provider = aiResult.provider || "";
         }
-        if (aiResult.error) console.warn(`[AI 글쓰기 실패] ${persona.nickname}: ${aiResult.error}`);
+        if (aiResult.error) {
+          console.warn(`[AI 글쓰기 실패] ${persona.nickname}: ${aiResult.error}`);
+          lastAiError = aiResult.error;
+        }
       }
 
       // 폴백 (API 전체 장애 시에만)
       if (!title || !content) {
+        if (!lastAiError) lastAiError = "AI 생성 결과 없음";
         title = fillTemplate(pickUniqueRandom(TEMPLATE_TITLES), vars);
         content = fillTemplate(pickUniqueRandom(TEMPLATE_CONTENTS), vars);
         provider = "template-fallback";
@@ -648,7 +666,7 @@ async function executeGritActions(
       } else {
         if (newPost) newPostIds.push({ id: newPost.id, author_id: persona.user_id, title, category, content });
         await supabase.from("personas").update({ total_posts: (persona.total_posts ?? 0) + 1, last_active_at: new Date().toISOString() }).eq("id", persona.id);
-        results.push({ action: "post", persona: persona.nickname, success: true, detail: `[${category}] "${title}" 작성`, provider });
+        results.push({ action: "post", persona: persona.nickname, success: true, detail: `[${category}] "${title}" 작성`, provider, error: lastAiError || undefined });
       }
 
     // ═══ 댓글/대댓글 ═══
@@ -908,9 +926,9 @@ export async function POST(request: NextRequest) {
       비전분석: stats.visionCalls,
       저관심스킵: stats.lowRelevance,
       AI제공자: [
-        effectiveApiKey.length > 10 ? "Anthropic(Haiku)" : null,
-        geminiKey.length > 10 ? "Gemini(3-Flash+Vision)" : null,
-        openaiKey.length > 10 ? "OpenAI(4o-mini)" : null,
+        geminiKey.length > 10 ? "🥇Gemini(3-Flash)" : null,
+        effectiveApiKey.length > 10 ? "🥈Anthropic(Haiku)" : null,
+        openaiKey.length > 10 ? "🥉OpenAI(4o-mini)" : null,
       ].filter(Boolean),
       아키텍처: "그릿 자율 에이전트 v1.0",
     };
