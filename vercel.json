@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/admin/test-interaction",
-      "schedule": "*/20 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
