@@ -26,6 +26,13 @@ import {
   Heart,
   PenLine,
   Drama,
+  Rocket,
+  Key,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  ThumbsUp,
 } from "lucide-react";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import { useImpersonation } from "@/app/context/ImpersonationContext";
@@ -66,6 +73,30 @@ const PERSONALITY_PRESETS = [
   "실용적인", "도전적인", "공감형", "분석적인", "직설적인",
 ];
 
+// ─── 시뮬레이션 결과 타입 ───
+type SimActionResult = {
+  action: string;
+  persona: string;
+  success: boolean;
+  detail: string;
+  error?: string;
+};
+
+type SimResult = {
+  success: boolean;
+  summary?: {
+    총액션: number;
+    성공: number;
+    실패: number;
+    글쓰기: number;
+    댓글: number;
+    추천: number;
+    AI사용: boolean;
+  };
+  results?: SimActionResult[];
+  error?: string;
+};
+
 // ─── 빈 폼 초기값 ───
 const EMPTY_FORM = {
   nickname: "",
@@ -98,6 +129,13 @@ export default function PersonasAdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null); // null이면 새로 생성
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+
+  // ─── 군단 활동 시뮬레이션 상태 ───
+  const [simOpen, setSimOpen] = useState(false);           // 시뮬레이션 패널 열기/닫기
+  const [simApiKey, setSimApiKey] = useState("");           // Anthropic API 키 (어드민 입력)
+  const [simActions, setSimActions] = useState(5);          // 수행할 액션 수
+  const [simRunning, setSimRunning] = useState(false);      // 실행 중 여부
+  const [simResults, setSimResults] = useState<SimResult | null>(null); // 실행 결과
 
   // ─── 페르소나 목록 불러오기 ───
   const fetchPersonas = useCallback(async () => {
@@ -262,6 +300,39 @@ export default function PersonasAdminPage() {
     startImpersonation(impersonateData);
   };
 
+  // ─── 군단 활동 시뮬레이션 실행 ───
+  const handleRunSimulation = async () => {
+    setSimRunning(true);
+    setSimResults(null);
+
+    try {
+      const res = await fetch("/api/admin/test-interaction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actions: simActions,
+          anthropicApiKey: simApiKey.trim(),
+          anakiUserId: user?.id || "",  // 현재 로그인한 VIP = 아나키
+        }),
+      });
+
+      const data = await res.json();
+      setSimResults(data as SimResult);
+
+      // 성공 시 페르소나 목록 새로고침 (통계가 변경되었을 수 있음)
+      if (data.success) {
+        await fetchPersonas();
+      }
+    } catch (err) {
+      setSimResults({
+        success: false,
+        error: err instanceof Error ? err.message : "네트워크 오류가 발생했습니다.",
+      });
+    } finally {
+      setSimRunning(false);
+    }
+  };
+
   // ─── 로딩 ───
   if (loading) {
     return (
@@ -316,6 +387,169 @@ export default function PersonasAdminPage() {
           <p className="text-2xl font-bold text-muted">{manualCount}</p>
           <p className="text-xs text-muted">MANUAL 대기</p>
         </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════ */}
+      {/* 🚀 군단 활동 시뮬레이션 패널                      */}
+      {/* ═══════════════════════════════════════════ */}
+      <div className="mb-6 rounded-xl border border-orange-500/20 bg-gradient-to-r from-orange-500/5 via-card-bg to-red-500/5 overflow-hidden">
+        {/* 토글 헤더 */}
+        <button
+          onClick={() => setSimOpen(!simOpen)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-orange-500/5"
+        >
+          <div className="flex items-center gap-2.5">
+            <Rocket className="h-5 w-5 text-orange-400" />
+            <span className="text-sm font-bold text-foreground">군단 활동 시뮬레이션</span>
+            <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-400">
+              NPC {personas.filter(p => p.is_active).length}명 대기
+            </span>
+          </div>
+          {simOpen ? (
+            <ChevronUp className="h-4 w-4 text-muted" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted" />
+          )}
+        </button>
+
+        {/* 펼쳐지는 내용 */}
+        {simOpen && (
+          <div className="border-t border-orange-500/10 px-4 py-4 space-y-4">
+            {/* API 키 입력 */}
+            <div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground mb-1.5">
+                <Key className="h-3 w-3 text-amber-400" />
+                Anthropic API Key <span className="text-muted font-normal">(선택 — 없으면 템플릿 모드)</span>
+              </label>
+              <input
+                type="password"
+                value={simApiKey}
+                onChange={(e) => setSimApiKey(e.target.value)}
+                placeholder="sk-ant-api03-..."
+                className="w-full rounded-lg border border-border-color bg-input-bg px-3 py-2 text-sm text-foreground placeholder-muted focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono"
+              />
+              <p className="mt-1 text-[10px] text-muted">
+                {simApiKey ? "✅ AI 모드 (Claude가 자연스러운 텍스트 생성)" : "📝 템플릿 모드 (미리 정의된 텍스트 사용)"}
+              </p>
+            </div>
+
+            {/* 액션 수 조절 */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  실행할 액션 수
+                </label>
+                <span className="text-sm font-bold text-orange-400">{simActions}개</span>
+              </div>
+              <input
+                type="range"
+                min={3}
+                max={20}
+                value={simActions}
+                onChange={(e) => setSimActions(Number(e.target.value))}
+                className="w-full accent-orange-400"
+              />
+              <div className="flex justify-between text-[10px] text-muted">
+                <span>3개 (가볍게)</span>
+                <span>20개 (풀 파워)</span>
+              </div>
+              <p className="mt-1 text-[10px] text-muted">
+                ≈ 글쓰기 {Math.max(1, Math.round(simActions * 0.3))}개 + 댓글 {Math.max(1, Math.round(simActions * 0.4))}개 + 추천 {Math.max(1, simActions - Math.max(1, Math.round(simActions * 0.3)) - Math.max(1, Math.round(simActions * 0.4)))}개
+              </p>
+            </div>
+
+            {/* 실행 버튼 */}
+            <button
+              onClick={handleRunSimulation}
+              disabled={simRunning || personas.filter(p => p.is_active).length === 0}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-sm font-bold text-white transition-all hover:from-orange-600 hover:to-red-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-orange-500/20"
+            >
+              {simRunning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  NPC 군단 활동 중...
+                </>
+              ) : (
+                <>
+                  <Rocket className="h-4 w-4" />
+                  🚀 군단 활동 시뮬레이션 시작
+                </>
+              )}
+            </button>
+
+            {/* 결과 표시 영역 */}
+            {simResults && (
+              <div className="mt-3 rounded-lg border border-border-color bg-card-bg p-4">
+                {simResults.success ? (
+                  <>
+                    {/* 요약 통계 */}
+                    <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                      <div className="rounded-lg bg-green-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-green-400">{simResults.summary?.성공}</p>
+                        <p className="text-[10px] text-muted">성공</p>
+                      </div>
+                      <div className="rounded-lg bg-red-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-red-400">{simResults.summary?.실패}</p>
+                        <p className="text-[10px] text-muted">실패</p>
+                      </div>
+                      <div className="rounded-lg bg-blue-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-blue-400">{simResults.summary?.글쓰기}</p>
+                        <p className="text-[10px] text-muted">글쓰기</p>
+                      </div>
+                      <div className="rounded-lg bg-cyan-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-cyan-400">{simResults.summary?.댓글}</p>
+                        <p className="text-[10px] text-muted">댓글</p>
+                      </div>
+                      <div className="rounded-lg bg-pink-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-pink-400">{simResults.summary?.추천}</p>
+                        <p className="text-[10px] text-muted">추천</p>
+                      </div>
+                      <div className="rounded-lg bg-amber-500/10 p-2 text-center">
+                        <p className="text-lg font-bold text-amber-400">{simResults.summary?.AI사용 ? "AI" : "TPL"}</p>
+                        <p className="text-[10px] text-muted">모드</p>
+                      </div>
+                    </div>
+
+                    {/* 상세 로그 */}
+                    <div className="max-h-60 overflow-y-auto space-y-1">
+                      {simResults.results?.map((r, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                            r.success ? "bg-green-500/5" : "bg-red-500/5"
+                          }`}
+                        >
+                          {r.success ? (
+                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-400" />
+                          ) : (
+                            <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                          )}
+                          <div className="min-w-0">
+                            <span className={`font-bold ${
+                              r.action === "post" ? "text-blue-400" :
+                              r.action === "comment" ? "text-cyan-400" : "text-pink-400"
+                            }`}>
+                              {r.action === "post" ? "📝" : r.action === "comment" ? "💬" : "👍"} {r.persona}
+                            </span>
+                            <span className="ml-1.5 text-muted">{r.detail}</span>
+                            {r.error && (
+                              <p className="mt-0.5 text-red-400/80">⚠️ {r.error}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-red-400">
+                    <XCircle className="h-5 w-5" />
+                    <span className="text-sm font-bold">시뮬레이션 실패: {simResults.error}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════ */}
