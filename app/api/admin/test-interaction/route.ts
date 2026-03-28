@@ -208,7 +208,7 @@ async function generateWithGemini(
   const { GoogleGenerativeAI } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash",
     systemInstruction: systemPrompt,
     generationConfig: {
       temperature: 0.9,
@@ -223,7 +223,7 @@ async function generateWithGemini(
   if (text && smellsLikeBot(text)) {
     console.warn(`[Gemini 봇 탐지] 재생성 시도`);
     const retryModel = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
+      model: "gemini-3-flash",
       systemInstruction: systemPrompt + `\n\n[긴급] 방금 네가 쓴 글이 AI 티가 났다. 완전 다르게 써.`,
       generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
     });
@@ -307,7 +307,7 @@ async function generateWithAI(
       if (result) return { text: result, provider: "gemini" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Gemini 실패] ${msg.slice(0, 120)}`);
+      console.warn(`[Gemini 실패] ${msg.slice(0, 200)}`);
       errors.push(`Gemini: ${msg.slice(0, 80)}`);
     }
   }
