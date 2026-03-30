@@ -719,10 +719,11 @@ export default function PostDetailClient() {
             {post.title}
           </h1>
 
-          {/* 본문 (줄바꿈 유지) */}
-          <div className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
-            {post.content}
-          </div>
+          {/* 본문 (HTML 렌더링 지원 — 스크래퍼가 삽입한 <img> 태그 등을 실제로 표시) */}
+          <div
+            className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-3"
+            dangerouslySetInnerHTML={{ __html: post.content }}
+          />
 
           {/* ─── 첨부 이미지 갤러리 (Next.js Image, fill + object-contain) ─── */}
           {/* 각 이미지를 w-full max-w-3xl로 꽉 채우되, 원본 비율 유지 */}

@@ -241,8 +241,9 @@ export default function PostCard({
         <h3 className="mb-1 text-[15px] font-semibold leading-snug text-foreground">
           {title}
         </h3>
+        {/* HTML 태그 제거 후 텍스트만 미리보기 (스크래퍼가 삽입한 <img> 등 제거) */}
         <p className="line-clamp-2 text-sm leading-relaxed text-muted">
-          {content}
+          {content?.replace(/<[^>]*>/g, "") || ""}
         </p>
 
         {/* ─── 레딧 스타일 이미지 슬라이더 ─── */}
