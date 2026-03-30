@@ -3,26 +3,43 @@
 // 날짜: 2026-03-30
 // 용도: 외부 크론(cron-job.org)이 호출 → 랜덤 스크래퍼 1개 실행
 // 패턴: Hit & Run (GET 즉시 200 → 백그라운드 POST로 실제 작업)
+//
+// [변경사항 2026-03-30]
+// - HtmlScraper 등록 추가 (보배드림, 개드립, 디시 실베)
+// - posts INSERT 시 category 컬럼 직접 삽입 방식으로 전환
+// - 기존 CATEGORY_COMMUNITY_MAP은 뉴스 스크래퍼용으로 유지
+// - 유머/자유 카테고리는 community_id 없이 category만으로 발행
 // ================================================================
 
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/utils/supabase/admin";
 import { registerScraper, pickRandomScraper } from "@/lib/scrapers/registry";
 import { createRssScrapers, RSS_FEED_CONFIGS } from "@/lib/scrapers/rss-scraper";
+import { createHtmlScrapers, HTML_SCRAPER_CONFIGS } from "@/lib/scrapers/html-scraper";
 import { rewriteArticle } from "@/lib/scrapers/rewriter";
 import type { RewriterPersona } from "@/lib/scrapers/rewriter";
 import type { ScrapedArticle, ScraperCronSummary } from "@/lib/scrapers/types";
 
 // ─── 스크래퍼 등록 (서버 시작 시 1회) ───
-// RSS 피드 설정에 있는 모든 스크래퍼를 레지스트리에 등록
+// RSS + HTML 스크래퍼 모두 레지스트리에 등록
 let isRegistered = false;
 function ensureScrapersRegistered() {
   if (isRegistered) return;
+
+  // 1) RSS 뉴스 스크래퍼 등록
   const rssScrapers = createRssScrapers(RSS_FEED_CONFIGS);
   for (const scraper of rssScrapers) {
     registerScraper(scraper);
   }
+
+  // 2) HTML 커뮤니티 스크래퍼 등록 (보배드림, 개드립, 디시)
+  const htmlScrapers = createHtmlScrapers(HTML_SCRAPER_CONFIGS);
+  for (const scraper of htmlScrapers) {
+    registerScraper(scraper);
+  }
+
   isRegistered = true;
+  console.log("[Scraper Cron] RSS + HTML 스크래퍼 등록 완료");
 }
 
 // ─── KST 시간 유틸 ───
@@ -36,14 +53,26 @@ function getKSTHour(): number {
   return kst.getUTCHours();
 }
 
-// ─── BizTask 카테고리 → 커뮤니티 ID 매핑 ───
-// 스크래퍼 카테고리에 맞는 커뮤니티에 자동 발행
-// marketing, business는 아직 전용 게시판 없음 → 리라이팅만 완료 (발행 스킵)
+// ─── 카테고리 → 커뮤니티 ID 매핑 (뉴스 스크래퍼용, 기존 호환) ───
+// 뉴스 카테고리는 전용 커뮤니티 게시판에 발행
+// 유머/자유 카테고리는 여기에 없으므로 community_id 없이 category만으로 발행됨
 const CATEGORY_COMMUNITY_MAP: Record<string, string> = {
   car: "acc85d23-5cb1-43c9-a86b-96464a5e79d0",        // 자동차 매니아
   ai: "e92e136f-df36-4c8c-a5ad-cb8d999649b9",         // 초급AI 실전반
   marketing: "c5a698b8-8047-41cf-83cb-548eca27e2e1",   // 마케팅
   business: "51c60f49-c1ba-407b-9de2-396657f15102",    // 사업
+};
+
+// ─── 스크래퍼 카테고리 → posts.category 값 매핑 ───
+// posts 테이블의 category 컬럼에 들어갈 한글 값
+// 기존 카테고리(뉴스)도 한글 카테고리를 넣어줌
+const CATEGORY_LABEL_MAP: Record<string, string> = {
+  humor: "유머",
+  free: "자유",
+  car: "자동차",
+  ai: "AI",
+  marketing: "마케팅",
+  business: "사업",
 };
 
 // ================================================================
@@ -112,7 +141,7 @@ export async function POST(request: NextRequest) {
       `[Scraper Cron POST] 실행 시작 (${currentDate} KST ${kstHour}시, fromCron: ${body.fromCron || false})`
     );
 
-    // ─── 스크래퍼 등록 확인 ───
+    // ─── 스크래퍼 등록 확인 (RSS + HTML 모두) ───
     ensureScrapersRegistered();
 
     // ─── 랜덤 스크래퍼 1개 선택 (Hit & Run) ───
@@ -121,7 +150,7 @@ export async function POST(request: NextRequest) {
       console.warn("[Scraper Cron] 등록된 스크래퍼가 없음");
       return Response.json({
         success: true,
-        message: "등록된 스크래퍼가 없습니다. RSS_FEED_CONFIGS에 피드를 추가하세요.",
+        message: "등록된 스크래퍼가 없습니다.",
         summary: null,
       });
     }
@@ -294,33 +323,32 @@ export async function POST(request: NextRequest) {
           .eq("id", sourceId);
 
         // ─── 3-5: 게시글 발행 ───
-        const communityId =
-          CATEGORY_COMMUNITY_MAP[scraper.category] || null;
+        // 커뮤니티 ID 결정: 뉴스 카테고리는 전용 커뮤니티에, 유머/자유는 null
+        const communityId = CATEGORY_COMMUNITY_MAP[scraper.category] || null;
 
-        // 커뮤니티 ID가 없으면 발행 스킵 (나중에 수동 발행 가능)
-        if (!communityId) {
-          console.warn(
-            `[Scraper Cron] 카테고리 "${scraper.category}"에 매핑된 커뮤니티 없음 — 리라이팅만 완료`
-          );
-          await supabase
-            .from("scraped_sources")
-            .update({ status: "posted", error_message: "커뮤니티 미매핑 — 리라이팅만 완료" })
-            .eq("id", sourceId);
-          summary.posted++;
-          continue;
+        // posts.category에 넣을 한글 카테고리 값
+        const postCategory = CATEGORY_LABEL_MAP[scraper.category] || "자유";
+
+        // posts 테이블에 게시글 삽입
+        // community_id가 있으면 넣고, 없으면 생략 (유머/자유)
+        // category 컬럼에 직접 한글 카테고리 삽입
+        const postData: Record<string, unknown> = {
+          title: rewriteResult.title,
+          content: rewriteResult.body,
+          author_id: (persona as unknown as { user_id: string }).user_id,
+          category: postCategory,      // ← 핵심 변경: category 직접 삽입
+          comment_count: 0,
+          upvotes: 0,
+        };
+
+        // 커뮤니티 ID가 있는 카테고리(뉴스)는 community_id도 넣기
+        if (communityId) {
+          postData.community_id = communityId;
         }
 
-        // posts 테이블에 게시글 삽입 (author_id = persona.user_id 사용!)
         const { data: newPost, error: postError } = await supabase
           .from("posts")
-          .insert({
-            title: rewriteResult.title,
-            content: rewriteResult.body,
-            author_id: (persona as unknown as { user_id: string }).user_id,
-            community_id: communityId,
-            comment_count: 0,
-            upvotes: 0,
-          })
+          .insert(postData)
           .select("id")
           .single();
 
@@ -369,7 +397,7 @@ export async function POST(request: NextRequest) {
 
         summary.posted++;
         console.log(
-          `[Scraper Cron] ✅ 발행 완료: "${rewriteResult.title}" by ${persona.nickname}`
+          `[Scraper Cron] ✅ 발행 완료: "${rewriteResult.title}" by ${persona.nickname} [${postCategory}]`
         );
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
