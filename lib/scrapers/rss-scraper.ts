@@ -292,13 +292,14 @@ export const RSS_FEED_CONFIGS: RssFeedConfig[] = [
     maxItems: 3,
   },
   // ─── 자동차 ───
-  // 주의: /feed/ 는 카테고리 목록이므로 /content/rss/news 를 사용해야 실제 기사가 나옴
+  // /content/rss/car = 승용차 전용 피드 (자동차 관련 기사만 수집)
+  // /content/rss/news = 전체 최신기사 (항공, 배터리 등 비자동차 기사 혼입)
   {
     name: "데일리카 (자동차)",
     category: "car",
-    feedUrl: "https://www.dailycar.co.kr/content/rss/news",
+    feedUrl: "https://www.dailycar.co.kr/content/rss/car",
     sourceSite: "데일리카",
-    maxItems: 3,
+    maxItems: 5,
   },
   // ─── AI/인공지능 ───
   {
