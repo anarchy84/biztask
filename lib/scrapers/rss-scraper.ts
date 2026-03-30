@@ -232,8 +232,12 @@ export class RssScraper implements Scraper {
       const cheerio = await import("cheerio");
       const $ = cheerio.load(html);
 
-      // 본문 선택자 시도
+      // 본문 선택자 시도 (한국 뉴스/자동차 매체 우선)
       const selectors = [
+        "#content_body",                                           // 데일리카 (dailycar.co.kr)
+        "#news_body_area", "#news_body", "#article_body",        // 자동차/뉴스 매체
+        ".view_cont", ".view-cont", ".view_con",                 // 뉴스 매체 공통
+        "#articleBody", ".news_content", "#newsContent",          // 일반 뉴스
         "article", ".article-body", ".post-content", ".entry-content",
         ".content-body", ".article-content", '[itemprop="articleBody"]',
         "main", ".main-content",
@@ -288,10 +292,11 @@ export const RSS_FEED_CONFIGS: RssFeedConfig[] = [
     maxItems: 3,
   },
   // ─── 자동차 ───
+  // 주의: /feed/ 는 카테고리 목록이므로 /content/rss/news 를 사용해야 실제 기사가 나옴
   {
     name: "데일리카 (자동차)",
     category: "car",
-    feedUrl: "https://www.dailycar.co.kr/feed/",
+    feedUrl: "https://www.dailycar.co.kr/content/rss/news",
     sourceSite: "데일리카",
     maxItems: 3,
   },

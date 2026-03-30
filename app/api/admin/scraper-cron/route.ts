@@ -286,30 +286,59 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
         })
         .eq("id", sourceId);
 
-      // ─── 3-4: AI 리라이팅 (브레인워싱) ───
-      const rewriteResult = await rewriteArticle(article, persona);
+      // ─── 3-4: AI 리라이팅 또는 원본 보존 ───
+      // 이미지가 포함된 글(유머/정보 등)은 AI 리라이팅 시
+      // 이미지와 글의 맥락이 맞지 않게 되므로, 원본 그대로 사용한다.
+      const hasImages = article.sourceImages && article.sourceImages.length > 0;
 
-      if (!rewriteResult) {
-        await supabase
-          .from("scraped_sources")
-          .update({
-            status: "failed",
-            error_message: "AI 리라이팅 실패 (모든 프로바이더)",
-          })
-          .eq("id", sourceId);
-        summary.failed++;
-        summary.errors.push(`리라이팅 실패: ${article.sourceTitle}`);
-        continue;
+      let finalTitle: string;
+      let finalBody: string;
+
+      if (hasImages) {
+        // ── 이미지 있음 → 원본 보존 (리라이팅 금지) ──
+        // 이미지를 HTML <img> 태그로 변환하여 본문 상단에 배치
+        const imageHtml = article.sourceImages!
+          .map(
+            (imgUrl) =>
+              `<img src="${imgUrl}" style="max-width:100%; height:auto; display:block; margin-bottom:15px;" />`
+          )
+          .join("\n");
+
+        finalTitle = article.sourceTitle;
+        finalBody = imageHtml + "\n" + (article.sourceBody || "");
+
+        console.log(
+          `[Scraper Cron] 이미지 ${article.sourceImages!.length}개 포함 → AI 리라이팅 스킵, 원본 보존: "${finalTitle.slice(0, 40)}"`
+        );
+      } else {
+        // ── 이미지 없음 → 기존 AI 리라이팅 수행 ──
+        const rewriteResult = await rewriteArticle(article, persona);
+
+        if (!rewriteResult) {
+          await supabase
+            .from("scraped_sources")
+            .update({
+              status: "failed",
+              error_message: "AI 리라이팅 실패 (모든 프로바이더)",
+            })
+            .eq("id", sourceId);
+          summary.failed++;
+          summary.errors.push(`리라이팅 실패: ${article.sourceTitle}`);
+          continue;
+        }
+
+        finalTitle = rewriteResult.title;
+        finalBody = rewriteResult.body;
       }
 
       summary.rewritten++;
 
-      // 리라이팅 결과 DB에 저장
+      // 리라이팅(또는 원본 보존) 결과 DB에 저장
       await supabase
         .from("scraped_sources")
         .update({
-          rewritten_title: rewriteResult.title,
-          rewritten_body: rewriteResult.body,
+          rewritten_title: finalTitle,
+          rewritten_body: finalBody,
           rewritten_at: new Date().toISOString(),
         })
         .eq("id", sourceId);
@@ -350,8 +379,8 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
 
       // posts 테이블에 게시글 삽입
       const postData: Record<string, unknown> = {
-        title: rewriteResult.title,
-        content: rewriteResult.body,
+        title: finalTitle,
+        content: finalBody,
         author_id: authorId,
         category: postCategory,
         comment_count: 0,
@@ -386,7 +415,7 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
           })
           .eq("id", sourceId);
         summary.failed++;
-        summary.errors.push(`발행 실패: ${rewriteResult.title}`);
+        summary.errors.push(`발행 실패: ${finalTitle}`);
         continue;
       }
 
@@ -419,7 +448,7 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
 
       summary.posted++;
       console.log(
-        `[Scraper Cron] ✅ 발행 완료: "${rewriteResult.title}" by ${persona.nickname} [${postCategory}]`
+        `[Scraper Cron] ✅ 발행 완료: "${finalTitle}" by ${persona.nickname} [${postCategory}]`
       );
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
