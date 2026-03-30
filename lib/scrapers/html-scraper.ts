@@ -53,7 +53,7 @@ const BASE_HEADERS: Record<string, string> = {
   "Sec-Ch-Ua-Platform": '"Windows"',
   "Sec-Fetch-Dest": "document",
   "Sec-Fetch-Mode": "navigate",
-  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-Site": "same-origin",
   "Sec-Fetch-User": "?1",
   "Upgrade-Insecure-Requests": "1",
 };
@@ -329,11 +329,11 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     listUrl: "https://www.bobaedream.co.kr/list?code=best",
     baseUrl: "https://www.bobaedream.co.kr",
     selectors: {
-      listItem: ".mainList tbody tr",                // 글 목록 행
+      listItem: "#boardlist tbody tr",               // 글 목록 행 (#boardlist 테이블)
       listLink: "a.bsubject",                        // 제목 링크
       listTitle: "a.bsubject",                       // 제목 텍스트도 여기서
-      contentBody: "#contentBody",                   // 상세 본문 영역
-      contentImages: "#contentBody img",             // 본문 내 이미지
+      contentBody: ".bodyCont",                        // 상세 본문 영역 (보배드림 실제 클래스)
+      contentImages: ".bodyCont img",                // 본문 내 이미지
     },
     customHeaders: {
       Referer: "https://www.bobaedream.co.kr/",
@@ -342,28 +342,12 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
   },
 
   // ────────────────────────────────────────────
-  // 2. 개드립넷 — 개드립 (유머)
-  // URL: https://www.dogdrip.net/dogdrip
-  // 특징: 비교적 접근 가능, 유머/짤방 특화
+  // [비활성화] 개드립넷 — 개드립 (유머)
+  // 사유: Rhymix 기반 CSR(Client Side Rendering)으로 본문 로딩
+  //       cheerio(서버사이드 HTML 파싱)로는 본문 추출 불가
+  //       article.rhymix_content 내부가 빈 상태로 렌더링됨
+  //       향후 Puppeteer 등 headless browser 도입 시 재활성화 가능
   // ────────────────────────────────────────────
-  {
-    name: "개드립넷 개드립",
-    category: "humor",
-    sourceSite: "개드립넷",
-    listUrl: "https://www.dogdrip.net/dogdrip",
-    baseUrl: "https://www.dogdrip.net",
-    selectors: {
-      listItem: ".eq.section_list .flex-wrap",       // 글 목록 아이템
-      listLink: "a.link-reset",                      // 제목 링크
-      listTitle: "span.title-link",                  // 제목 텍스트
-      contentBody: ".document_396_xe_content",       // 본문 영역 (XE 기반)
-      contentImages: ".document_396_xe_content img", // 본문 이미지
-    },
-    customHeaders: {
-      Referer: "https://www.dogdrip.net/",
-    },
-    maxItems: 5,
-  },
 
   // ────────────────────────────────────────────
   // 3. 디시인사이드 — 실시간베스트 (실베)
@@ -378,9 +362,9 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     listUrl: "https://gall.dcinside.com/board/lists/?id=dcbest",
     baseUrl: "https://gall.dcinside.com",
     selectors: {
-      listItem: ".ub-content .us-post",              // 글 목록 행
-      listLink: "a.reply_numbox",                    // 제목 링크
-      listTitle: "a.reply_numbox",                   // 제목
+      listItem: "tr.us-post",                        // 글 목록 행 (tr에 us-post 클래스)
+      listLink: "a:not(.reply_numbox)",              // 제목 링크 (댓글수 링크 제외)
+      listTitle: "a:not(.reply_numbox)",             // 제목 텍스트
       contentBody: ".write_div",                     // 상세 본문 영역
       contentImages: ".write_div img",               // 본문 이미지
     },
