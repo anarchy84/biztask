@@ -759,85 +759,50 @@ async function executeNpcCron(
 // ════════════════════════════════════════════════════════════
 // GET 핸들러: 외부 크론 서비스 호출
 // ════════════════════════════════════════════════════════════
+// 핵심: 인증 확인 후 즉시 200 응답 → 백그라운드에서 NPC 실행
+// cron-job.org 무료 플랜 타임아웃(30초)에 걸리지 않도록 설계
+// ════════════════════════════════════════════════════════════
 export async function GET(request: NextRequest) {
-  try {
-    // CRON_SECRET 검증
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET || "";
+  // CRON_SECRET 검증
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET || "";
 
-    if (!cronSecret) {
-      console.warn("[NPC Cron] CRON_SECRET 미설정");
-    }
+  if (!cronSecret) {
+    console.warn("[NPC Cron] CRON_SECRET 미설정");
+  }
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      return Response.json(
-        { success: false, error: "인증 실패: Authorization 헤더 불일치" },
-        { status: 401 }
-      );
-    }
-
-    const kstHour = getKSTHour();
-    const currentDate = getKSTDate();
-
-    const supabase = createAdminSupabaseClient();
-    const apiKey = process.env.ANTHROPIC_API_KEY || "";
-
-    // 활성 NPC 로드
-    const { data: personas, error: personaError } = await supabase
-      .from("personas")
-      .select(
-        "id, user_id, nickname, avatar_url, industry, personality, prompt, is_active, " +
-        "total_posts, total_comments, total_likes, action_bias, core_interests, interest_weights, " +
-        "active_start_hour, active_end_hour, post_frequency, comment_frequency, like_frequency, " +
-        "today_posts, today_comments, today_likes, today_reset_date"
-      )
-      .eq("is_active", true);
-
-    if (personaError) {
-      console.error("[NPC Cron GET] DB 에러:", personaError.message);
-      return Response.json(
-        { success: false, error: "DB 조회 실패", detail: personaError.message },
-        { status: 500 }
-      );
-    }
-
-    if (!personas || personas.length === 0) {
-      return Response.json(
-        { success: true, message: "활성 NPC 없음", executed: 0, kstHour, currentDate },
-        { status: 200 }
-      );
-    }
-
-    console.log(`[NPC Cron GET] ${personas.length}명 NPC 크론 시작 (KST ${kstHour}시, ${currentDate})`);
-
-    const summary = await executeNpcCron(supabase, personas as unknown as Persona[], apiKey);
-
-    return Response.json({
-      success: true,
-      cron: true,
-      kstHour,
-      currentDate,
-      summary: {
-        executed: summary.executed,
-        posts: summary.posts,
-        comments: summary.comments,
-        votes: summary.votes,
-        skipped: summary.skipped,
-        errors: summary.errors,
-      },
-      totalPersonas: personas.length,
-      message: `${summary.executed}개 행동 실행 (글${summary.posts}, 댓글${summary.comments}, 추천${summary.votes})`,
-    });
-  } catch (error) {
-    console.error("[NPC Cron GET] 예외 발생:", error);
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return Response.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "알 수 없는 에러",
-      },
-      { status: 500 }
+      { success: false, error: "인증 실패: Authorization 헤더 불일치" },
+      { status: 401 }
     );
   }
+
+  const kstHour = getKSTHour();
+  const currentDate = getKSTDate();
+
+  // ─── 즉시 200 응답 반환 (타임아웃 방지) ───
+  // 백그라운드에서 NPC 크론 실행은 자체 내부 호출로 처리
+  // cron-job.org는 이 응답만 받고 종료됨
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://www.biztask.kr";
+
+  // 백그라운드 실행: 자기 자신의 POST 엔드포인트를 비동기 호출
+  // fetch를 await하지 않으므로 즉시 응답 가능
+  fetch(`${siteUrl}/api/admin/npc-cron`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runAll: true, fromCron: true }),
+  }).catch((err) => {
+    console.error("[NPC Cron GET] 백그라운드 POST 호출 실패:", err);
+  });
+
+  return Response.json({
+    success: true,
+    cron: true,
+    kstHour,
+    currentDate,
+    message: `크론 수신 완료 → 백그라운드 실행 시작 (KST ${kstHour}시)`,
+  });
 }
 
 // ════════════════════════════════════════════════════════════
