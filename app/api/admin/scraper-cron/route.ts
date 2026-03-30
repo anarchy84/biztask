@@ -17,6 +17,7 @@ import { registerScraper, pickRandomScraper } from "@/lib/scrapers/registry";
 import { createRssScrapers, RSS_FEED_CONFIGS } from "@/lib/scrapers/rss-scraper";
 import { createHtmlScrapers, HTML_SCRAPER_CONFIGS } from "@/lib/scrapers/html-scraper";
 import { rewriteArticle } from "@/lib/scrapers/rewriter";
+import { downloadAndUploadImages } from "@/lib/scrapers/image-uploader";
 import type { RewriterPersona } from "@/lib/scrapers/rewriter";
 import type { ScrapedArticle, ScraperCronSummary } from "@/lib/scrapers/types";
 
@@ -313,7 +314,34 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
         })
         .eq("id", sourceId);
 
-      // ─── 3-5: 게시글 발행 ───
+      // ─── 3-5: 이미지 다운로드 → Supabase Storage 업로드 ───
+      // 원본 이미지를 우리 서버로 가져와서 자체 호스팅
+      // → 외부 사이트 이미지 핫링크 차단 대응 + 안정적 이미지 제공
+      const authorId = (persona as unknown as { user_id: string }).user_id;
+      let uploadedImageUrls: string[] = [];
+
+      if (article.sourceImages && article.sourceImages.length > 0) {
+        try {
+          const imageResult = await downloadAndUploadImages(
+            article.sourceImages,
+            supabase,
+            authorId,
+            article.sourceUrl // Referer로 원본 글 URL 사용
+          );
+          uploadedImageUrls = imageResult.uploaded;
+          console.log(
+            `[Scraper Cron] 이미지 업로드: ${uploadedImageUrls.length}개 성공, ${imageResult.failed}개 실패`
+          );
+        } catch (imgErr) {
+          // 이미지 업로드 실패해도 게시글은 발행 (텍스트만)
+          console.warn(
+            "[Scraper Cron] 이미지 업로드 중 에러 (무시):",
+            imgErr instanceof Error ? imgErr.message : String(imgErr)
+          );
+        }
+      }
+
+      // ─── 3-6: 게시글 발행 ───
       // 커뮤니티 ID 결정: 뉴스 카테고리는 전용 커뮤니티에, 유머/자유는 null
       const communityId = CATEGORY_COMMUNITY_MAP[scraper.category] || null;
 
@@ -321,16 +349,19 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
       const postCategory = CATEGORY_LABEL_MAP[scraper.category] || "자유";
 
       // posts 테이블에 게시글 삽입
-      // community_id가 있으면 넣고, 없으면 생략 (유머/자유)
-      // category 컬럼에 직접 한글 카테고리 삽입
       const postData: Record<string, unknown> = {
         title: rewriteResult.title,
         content: rewriteResult.body,
-        author_id: (persona as unknown as { user_id: string }).user_id,
-        category: postCategory,      // ← 핵심 변경: category 직접 삽입
+        author_id: authorId,
+        category: postCategory,
         comment_count: 0,
         upvotes: 0,
       };
+
+      // 업로드된 이미지가 있으면 image_urls에 추가
+      if (uploadedImageUrls.length > 0) {
+        postData.image_urls = uploadedImageUrls;
+      }
 
       // 커뮤니티 ID가 있는 카테고리(뉴스)는 community_id도 넣기
       if (communityId) {
