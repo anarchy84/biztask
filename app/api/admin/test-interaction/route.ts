@@ -331,16 +331,40 @@ async function generateWithAnthropic(
 async function generateWithGemini(
   apiKey: string, systemPrompt: string, userPrompt: string
 ): Promise<string | null> {
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
+  const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = await import("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
+
+  // 안전 필터 완화 — 커뮤니티 글/댓글이 차단되지 않도록
+  const safetySettings = [
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  ];
+
   // 🔥 gemini-2.5-flash: stable 버전 + 무료 티어 + systemInstruction 지원
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
     systemInstruction: systemPrompt,
     generationConfig: { temperature: 0.9, maxOutputTokens: 500 },
+    safetySettings,
   });
   const result = await model.generateContent(userPrompt);
   const text = result.response.text();
+
+  // 빈 응답이면 한 번 더 시도 (temperature 올려서)
+  if (!text || text.trim().length < 5) {
+    console.warn(`[Gemini] 빈 응답 → 재시도 (temperature 1.2)`);
+    const retryModel = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      systemInstruction: systemPrompt + `\n\n[중요] 반드시 내용을 생성해. 빈 응답 금지.`,
+      generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
+      safetySettings,
+    });
+    const retry = await retryModel.generateContent(userPrompt);
+    const retryText = retry.response.text();
+    if (retryText && retryText.trim().length >= 5) return retryText;
+  }
 
   if (text && smellsLikeBot(text)) {
     console.warn(`[Gemini 봇 탐지] 재생성 시도`);
@@ -348,6 +372,7 @@ async function generateWithGemini(
       model: "gemini-2.5-flash",
       systemInstruction: systemPrompt + `\n\n[긴급] AI 티 났다. 완전 다르게 써.`,
       generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
+      safetySettings,
     });
     const retry = await retryModel.generateContent(userPrompt);
     const retryText = retry.response.text();
