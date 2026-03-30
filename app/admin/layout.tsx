@@ -17,6 +17,7 @@ import {
   Bot,
   Star,
   Globe,
+  Zap,
 } from "lucide-react";
 
 // ─── 어드민 내비게이션 메뉴 정의 ───
@@ -35,6 +36,13 @@ const ADMIN_TABS = [
     icon: Bot,
     emoji: "🤖",
     description: "AI 캐릭터 관리",
+  },
+  {
+    label: "NPC 활동 제어",
+    path: "/admin/npc-control",
+    icon: Zap,
+    emoji: "⚡",
+    description: "NPC 활동 제어 및 모니터링",
   },
   {
     label: "추천 콘텐츠",
