@@ -4,7 +4,7 @@
 // 핵심 아키텍처:
 //   - action_bias 돌림판: NPC마다 글/댓글/추천 확률이 다름
 //   - 관심도 매칭(0~100): NPC의 core_interests vs 게시글 키워드
-//   - 비용 통제: 0~39점은 API 호출 금지, 40+ 만 AI 생성
+//   - 비용 통제: 0~19점은 API 호출 금지, 20+ 만 AI 생성
 //   - 제미나이 비전(눈): 이미지 분석 → 클로드(뇌): 텍스트 생성
 //   - 폴백 체인: Anthropic Haiku → Gemini 3 Flash → OpenAI GPT-4o-mini
 //   - 템플릿은 최후의 폴백(API 전체 장애 시)으로만 사용
@@ -141,7 +141,7 @@ function calculateRelevanceScore(
 ): number {
   const interests = persona.core_interests || [];
   const weights = persona.interest_weights || {};
-  if (interests.length === 0) return 50; // 관심사 미설정 시 중간값
+  if (interests.length === 0) return 35; // 관심사 미설정 시 → 추천은 하되 댓글은 안 달게
 
   // 게시글 텍스트 (제목 + 본문 앞 500자)
   const targetText = `${postTitle} ${postContent.slice(0, 500)}`.toLowerCase();
@@ -159,22 +159,25 @@ function calculateRelevanceScore(
   // 0~70점 범위로 정규화
   const normalizedKeyword = maxPossible > 0 ? (keywordScore / maxPossible) * 70 : 0;
 
+  // 키워드 1개라도 매칭되면 기본 15점 보장 (매칭 0개면 0점)
+  const matchBonus = keywordScore > 0 ? 15 : 0;
+
   // 2) 카테고리-업종 매칭 보너스 (최대 +20점)
   let categoryBonus = 0;
   const matchingIndustries = CATEGORY_INDUSTRY_MAP[postCategory] || [];
   if (matchingIndustries.includes(persona.industry)) {
     categoryBonus = 20;
   }
-  // "자유" 카테고리는 누구나 참여 가능 → 기본 +10점
+  // "자유" 카테고리는 누구나 참여 가능 → 기본 +25점
   if (postCategory === "자유") {
-    categoryBonus = 10;
+    categoryBonus = 25;
   }
 
   // 3) 랜덤 변동 (±10점) — 같은 NPC라도 매번 조금씩 다르게
   const randomJitter = Math.floor(Math.random() * 21) - 10;
 
-  // 최종 점수 (0~100 클램프)
-  const finalScore = Math.max(0, Math.min(100, Math.round(normalizedKeyword + categoryBonus + randomJitter)));
+  // 최종 점수 (0~100 클램프) — matchBonus로 키워드 1개만 매칭돼도 최소 점수 보장
+  const finalScore = Math.max(0, Math.min(100, Math.round(normalizedKeyword + categoryBonus + matchBonus + randomJitter)));
   return finalScore;
 }
 
@@ -494,7 +497,7 @@ function buildDynamicSystemPrompt(
       `현업 경험자답게 구체적인 숫자, 사례, 업계 전문용어를 자연스럽게 섞어서 반응해라.\n` +
       `"아 이거 나도 겪어봤는데~" 식으로 리얼한 경험담을 섞어라.\n` +
       `길이: 40~120자. 짧지만 알맹이가 있게.`;
-  } else if (relevanceScore >= 40) {
+  } else if (relevanceScore >= 20) {
     // 일반 관심 — 가벼운 반응
     expertiseDirective =
       `\n[💬 가벼운 반응 모드 (관심도 ${relevanceScore}점)]\n` +
@@ -502,7 +505,7 @@ function buildDynamicSystemPrompt(
       `심드렁하게 한 줄 반응만 해라. 전문가 코스프레 금지.\n` +
       `길이: 10~40자. 짧을수록 좋다.`;
   }
-  // 0~39점은 이 함수가 호출되지 않음 (API 호출 자체를 안 함)
+  // 0~19점은 이 함수가 호출되지 않음 (API 호출 자체를 안 함)
 
   // 이미지 분석 결과 주입 (제미나이 비전 하이브리드)
   let imageContext = "";
@@ -648,12 +651,12 @@ async function executeGritActions(
         }
       }
 
-      // 폴백 (API 전체 장애 시에만)
+      // AI 실패 시 → 템플릿 사용하지 않고 스킵 (템플릿 글은 절대 안 씀)
       if (!title || !content) {
         if (!lastAiError) lastAiError = "AI 생성 결과 없음";
-        title = fillTemplate(pickUniqueRandom(TEMPLATE_TITLES), vars);
-        content = fillTemplate(pickUniqueRandom(TEMPLATE_CONTENTS), vars);
-        provider = "template-fallback";
+        stats.skipped++;
+        results.push({ action: "post", persona: persona.nickname, success: true, detail: `AI 생성 실패 → 스킵`, error: lastAiError });
+        continue;
       }
 
       const { data: newPost, error: postError } = await supabase
@@ -692,8 +695,8 @@ async function executeGritActions(
       // 🧠 관심도 점수 계산
       const relevance = calculateRelevanceScore(persona, targetPost.title, postContent, targetPost.category);
 
-      // ─── [절대 원칙 1] 0~39점: API 호출 금지! 로컬에서 추천만 처리 ───
-      if (relevance < 40) {
+      // ─── [절대 원칙 1] 0~19점: API 호출 금지! 로컬에서 추천만 처리 ───
+      if (relevance < 20) {
         stats.lowRelevance++;
         // 관심 없는 글 → 확률적으로 추천만 하고 넘어감 (50%)
         if (Math.random() < 0.5) {
@@ -718,7 +721,7 @@ async function executeGritActions(
         continue;
       }
 
-      // ─── 40점 이상: AI 생성 ───
+      // ─── 20점 이상: AI 생성 ───
       // 대댓글 vs 댓글 결정 (기존 댓글 있으면 30% 확률로 대댓글)
       const { data: existingComments } = await supabase
         .from("comments").select("id, content, user_id")
@@ -729,7 +732,7 @@ async function executeGritActions(
 
       // 👁️ 이미지 분석 (제미나이 비전 하이브리드)
       let imageAnalysis: string | null = null;
-      if (relevance >= 60 && geminiKey.length > 10) {
+      if (relevance >= 50 && geminiKey.length > 10) {
         imageAnalysis = await analyzePostImages(postContent, geminiKey);
         if (imageAnalysis) stats.visionCalls++;
       }
@@ -795,10 +798,11 @@ async function executeGritActions(
         continue;
       }
 
-      // 폴백 (API 전체 장애 시에만)
+      // AI 실패 시 → 템플릿 사용하지 않고 스킵
       if (!commentText) {
-        commentText = isReply ? pickRandom(TEMPLATE_REPLIES) : pickRandom(TEMPLATE_COMMENTS);
-        provider = "template-fallback";
+        stats.skipped++;
+        results.push({ action: "comment", persona: persona.nickname, success: true, detail: `AI 생성 실패 → 스킵 (관심도 ${relevance})`, relevance });
+        continue;
       }
 
       // DB 저장
