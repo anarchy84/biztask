@@ -83,18 +83,30 @@ export class RssScraper implements Scraper {
     try {
       console.log(`[${this.name}] 본문 파싱 시작: ${url}`);
 
-      // HTML 가져오기
+      // ─── 구글뉴스 리다이렉트 처리 ───
+      // 구글뉴스 RSS의 link는 https://news.google.com/rss/articles/... 형태
+      // redirect: "follow"로 실제 기사 URL까지 자동 추적
+      // User-Agent를 일반 브라우저처럼 위장 (봇 차단 방지)
       const response = await fetch(url, {
+        redirect: "follow",
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (compatible; BizTaskBot/1.0; +https://www.biztask.kr)",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
         },
         signal: AbortSignal.timeout(15000), // 15초 타임아웃
       });
 
+      // 리다이렉트 후 최종 URL 로깅
+      const finalUrl = response.url;
+      if (finalUrl !== url) {
+        console.log(`[${this.name}] 리다이렉트: ${url} → ${finalUrl}`);
+      }
+
       if (!response.ok) {
         console.warn(
-          `[${this.name}] HTTP ${response.status} — ${url}`
+          `[${this.name}] HTTP ${response.status} — ${finalUrl}`
         );
         return null;
       }
@@ -201,36 +213,44 @@ export class RssScraper implements Scraper {
 }
 
 // ================================================================
-// ─── RSS 피드 목록 (진짜 실전용) ───
+// ─── RSS 피드 목록 (실전용 — 직접 접속 가능한 피드만) ───
 // ================================================================
+// 구글뉴스 RSS는 리다이렉트 체인 + 차단 문제로 불안정
+// → 직접 RSS를 제공하는 국내 언론사 피드 사용
+// 참고: https://github.com/akngs/knews-rss (한국 언론사 RSS 모음)
 export const RSS_FEED_CONFIGS: RssFeedConfig[] = [
+  // ─── 마케팅/IT ───
   {
-    name: "구글 뉴스 (마케팅)",
+    name: "한국 테크 뉴스 (마케팅/IT)",
     category: "marketing",
-    feedUrl: "https://news.google.com/rss/search?q=%EB%A7%88%EC%BC%80%ED%8C%85&hl=ko&gl=KR&ceid=KR:ko",
-    sourceSite: "구글뉴스",
+    feedUrl: "https://akngs.github.io/knews-rss/categories/tech.xml",
+    sourceSite: "한국 테크 뉴스",
     maxItems: 3,
   },
+  // ─── 사업/경제 ───
   {
-    name: "구글 뉴스 (사업/비즈니스)",
+    name: "한국 경제 뉴스 (사업)",
     category: "business",
-    feedUrl: "https://news.google.com/rss/search?q=%EB%B9%84%EC%A6%88%EB%8B%88%EC%8A%A4&hl=ko&gl=KR&ceid=KR:ko",
-    sourceSite: "구글뉴스",
+    feedUrl: "https://akngs.github.io/knews-rss/categories/economy.xml",
+    sourceSite: "한국 경제 뉴스",
     maxItems: 3,
   },
+  // ─── 자동차 ───
   {
-    name: "구글 뉴스 (자동차)",
+    name: "데일리카 (자동차)",
     category: "car",
-    feedUrl: "https://news.google.com/rss/search?q=%EC%9E%90%EB%8F%99%EC%B0%A8&hl=ko&gl=KR&ceid=KR:ko",
-    sourceSite: "구글뉴스",
+    feedUrl: "https://www.dailycar.co.kr/feed/",
+    sourceSite: "데일리카",
     maxItems: 3,
   },
+  // ─── AI/인공지능 ───
+  // tech.xml에 AI 기사도 포함되지만 AI 전용으로 구글뉴스 유지 (리다이렉트 처리 적용됨)
   {
     name: "구글 뉴스 (AI/인공지능)",
     category: "ai",
     feedUrl: "https://news.google.com/rss/search?q=%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5+AI&hl=ko&gl=KR&ceid=KR:ko",
     sourceSite: "구글뉴스",
-    maxItems: 3,
+    maxItems: 2,
   },
 ];
 

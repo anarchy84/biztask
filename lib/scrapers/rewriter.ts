@@ -10,11 +10,12 @@ import type { ScrapedArticle, RewriteResult } from "./types";
 // ─── NPC 페르소나 정보 (리라이팅에 필요한 최소 정보) ───
 export interface RewriterPersona {
   id: string;
+  user_id: string;          // auth 유저 UUID (posts.author_id에 사용)
   nickname: string;
-  persona_type: string;    // 예: "직장인", "자영업자", "MZ세대"
-  industry: string;        // 예: "마케팅", "요식업", "IT"
-  speech_style: string;    // 말투 설명 (예: "반말+이모티콘")
-  core_interests: string[];// 관심사 배열
+  personality: string;      // 성격/유형 (예: "직장인", "자영업자", "MZ세대")
+  industry: string;         // 예: "마케팅", "요식업", "IT"
+  prompt: string;           // 말투·행동 지침 프롬프트
+  core_interests: string[]; // 관심사 배열
 }
 
 // ─── AI 생성 함수들 (npc-cron/route.ts와 동일 패턴) ───
@@ -154,10 +155,10 @@ export async function rewriteArticle(
 
   // ─── 시스템 프롬프트: NPC에게 "세뇌" ───
   const systemPrompt = `너는 "${persona.nickname}"이라는 사람이야.
-직업/유형: ${persona.persona_type}
+직업/유형: ${persona.personality}
 업종: ${persona.industry}
 관심사: ${persona.core_interests.join(", ")}
-말투: ${persona.speech_style}
+행동지침: ${persona.prompt}
 
 ## 핵심 규칙
 1. 너는 기사를 읽고 "내 경험·생각"으로 완전히 다시 써야 해
@@ -167,7 +168,7 @@ export async function rewriteArticle(
 5. 커뮤니티 게시글 느낌으로 — 딱딱하면 안 됨
 6. 원본 출처를 절대 언급하지 마
 7. 제목도 커뮤니티 스타일로 완전히 새로 만들어
-8. 반드시 너의 말투(${persona.speech_style})를 지켜
+8. 반드시 행동지침에 나온 말투를 지켜
 
 ## 출력 형식
 첫 줄: 제목 (제목만, "제목:" 같은 접두사 없이)

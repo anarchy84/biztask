@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
         // ─── 3-3: 활성 NPC 중 랜덤 1명 배정 ───
         const { data: personas } = await supabase
           .from("personas")
-          .select("id, nickname, persona_type, industry, speech_style, core_interests")
+          .select("id, user_id, nickname, personality, industry, prompt, core_interests")
           .eq("is_active", true);
 
         if (!personas || personas.length === 0) {
@@ -310,13 +310,13 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // posts 테이블에 게시글 삽입
+        // posts 테이블에 게시글 삽입 (author_id = persona.user_id 사용!)
         const { data: newPost, error: postError } = await supabase
           .from("posts")
           .insert({
             title: rewriteResult.title,
             content: rewriteResult.body,
-            user_id: persona.id, // NPC의 user_id
+            author_id: (persona as unknown as { user_id: string }).user_id,
             community_id: communityId,
             comment_count: 0,
             upvotes: 0,
