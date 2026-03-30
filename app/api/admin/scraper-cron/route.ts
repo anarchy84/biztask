@@ -239,6 +239,7 @@ async function runScraperJob(fromCron: boolean = false): Promise<{
           source_title: article.sourceTitle,
           source_body: article.sourceBody,
           source_images: article.sourceImages,
+          source_comments: article.sourceComments || [],
           category: article.category,
           status: "pending",
         })

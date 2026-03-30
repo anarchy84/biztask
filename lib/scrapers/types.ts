@@ -10,6 +10,7 @@ export interface ScrapedArticle {
   sourceTitle: string;      // 원본 제목
   sourceBody: string;       // 원본 본문 (HTML 태그 제거된 텍스트)
   sourceImages: string[];   // 원본 이미지 URL 배열
+  sourceComments: string[]; // 원본 게시글의 실제 유저 댓글 (최대 5개, Few-Shot용)
   sourceSite: string;       // 출처 사이트명 (예: '아이보스')
   category: string;         // 카테고리 (예: 'marketing', 'tax')
   scrapedAt: string;        // 수집 시각 (ISO 문자열)
@@ -36,6 +37,7 @@ export interface ScrapedSource {
   source_title: string;
   source_body: string | null;
   source_images: string[];
+  source_comments: string[];  // 원본 유저 댓글 (Few-Shot용)
   category: string;
   status: "pending" | "rewriting" | "posted" | "failed" | "skipped";
   assigned_persona_id: string | null;

@@ -189,7 +189,8 @@ export class RssScraper implements Scraper {
         sourceUrl: url,
         sourceTitle: title,
         sourceBody: bodyText,
-        sourceImages: [], // RSS에서는 이미지 추출 생략 (본문 텍스트가 핵심)
+        sourceImages: [],     // RSS에서는 이미지 추출 생략 (본문 텍스트가 핵심)
+        sourceComments: [],   // RSS 피드에는 댓글 구조 없음 (뉴스 기사)
         sourceSite: this.sourceSite,
         category: this.category,
         scrapedAt: new Date().toISOString(),

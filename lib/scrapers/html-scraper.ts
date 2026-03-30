@@ -24,6 +24,9 @@ export interface HtmlScraperConfig {
     listTitle: string;      // 각 아이템 안의 제목 (예: "a" 또는 ".title")
     contentBody: string;    // 상세 페이지 본문 영역 (예: ".bodyCont")
     contentImages: string;  // 상세 페이지 이미지들 (예: ".bodyCont img")
+    // ─── 댓글 크롤링 (Few-Shot용) ───
+    commentItem?: string;   // 댓글 영역 개별 아이템 (예: ".cmt_info")
+    commentText?: string;   // 댓글 아이템 내 텍스트 (예: ".cmt_txt_cont")
   };
 
   // ─── HTTP 요청 커스텀 헤더 (봇 차단 우회용) ───
@@ -286,8 +289,36 @@ export class HtmlScraper implements Scraper {
         }
       });
 
+      // ─── 댓글 크롤링 (Few-Shot 프롬프팅용) ───
+      // 실제 유저들의 반응을 최대 5개까지 수집하여 AI에게 컨닝 페이퍼로 제공
+      const comments: string[] = [];
+      const { commentItem, commentText } = selectors;
+      if (commentItem) {
+        $(commentItem).each((_i, cmtEl) => {
+          if (comments.length >= 5) return false; // 최대 5개
+
+          // 댓글 텍스트 추출
+          let cmtContent = "";
+          if (commentText) {
+            cmtContent = $(cmtEl).find(commentText).first().text().trim();
+          } else {
+            cmtContent = $(cmtEl).text().trim();
+          }
+
+          // 너무 짧거나 긴 댓글 필터링
+          if (cmtContent.length >= 5 && cmtContent.length <= 200) {
+            // 광고성/봇 댓글 필터
+            const isSpam = /https?:\/\/|텔레그램|카톡|문의|홍보|광고|클릭/i.test(cmtContent);
+            if (!isSpam) {
+              comments.push(cmtContent);
+            }
+          }
+        });
+        console.log(`[${this.name}] 댓글 ${comments.length}개 수집 (Few-Shot용)`);
+      }
+
       console.log(
-        `[${this.name}] 파싱 완료: "${title}" (본문 ${bodyText.length}자, 이미지 ${images.length}장)`
+        `[${this.name}] 파싱 완료: "${title}" (본문 ${bodyText.length}자, 이미지 ${images.length}장, 댓글 ${comments.length}개)`
       );
 
       return {
@@ -295,6 +326,7 @@ export class HtmlScraper implements Scraper {
         sourceTitle: title,
         sourceBody: bodyText,
         sourceImages: images,
+        sourceComments: comments,
         sourceSite: this.config.sourceSite,
         category: this.category,
         scrapedAt: new Date().toISOString(),
@@ -334,6 +366,9 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
       listTitle: "a.bsubject",                       // 제목 텍스트도 여기서
       contentBody: ".bodyCont",                        // 상세 본문 영역 (보배드림 실제 클래스)
       contentImages: ".bodyCont img",                // 본문 내 이미지
+      // ─── 댓글 (Few-Shot용) ───
+      commentItem: ".cmt_info",                      // 보배드림 댓글 개별 아이템
+      commentText: ".cmt_txt_cont",                  // 댓글 텍스트 영역
     },
     customHeaders: {
       Referer: "https://www.bobaedream.co.kr/",
@@ -367,6 +402,9 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
       listTitle: "a:not(.reply_numbox)",             // 제목 텍스트
       contentBody: ".write_div",                     // 상세 본문 영역
       contentImages: ".write_div img",               // 본문 이미지
+      // ─── 댓글 (Few-Shot용) ───
+      commentItem: ".reply_info",                    // 디시 댓글 개별 행
+      commentText: ".usertxt",                       // 댓글 텍스트
     },
     customHeaders: {
       Referer: "https://gall.dcinside.com/",
