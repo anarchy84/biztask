@@ -342,28 +342,62 @@ async function generateWithGemini(
     { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
   ];
 
-  // 🔥 gemini-2.5-flash: stable 버전 + 무료 티어 + systemInstruction 지원
+  // 🔥 gemini-2.5-flash: thinking 모델이라 budgetTokens로 사고 토큰 제한
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
     systemInstruction: systemPrompt,
-    generationConfig: { temperature: 0.9, maxOutputTokens: 500 },
+    generationConfig: {
+      temperature: 0.9,
+      maxOutputTokens: 500,
+      // @ts-ignore — thinking 설정: 사고에 토큰 적게 쓰고 실제 응답에 집중
+      thinkingConfig: { thinkingBudget: 100 },
+    },
     safetySettings,
   });
   const result = await model.generateContent(userPrompt);
-  const text = result.response.text();
+  let text = "";
+  try {
+    text = result.response.text();
+  } catch (e) {
+    // text()가 빈 응답이면 에러 날 수 있음 — candidates에서 직접 추출
+    const candidate = result.response.candidates?.[0];
+    if (candidate?.content?.parts) {
+      text = candidate.content.parts
+        .filter((p: { text?: string }) => p.text)
+        .map((p: { text?: string }) => p.text)
+        .join("");
+    }
+    console.warn(`[Gemini] text() 에러 → candidates에서 추출: "${text?.slice(0, 50)}"`);
+  }
 
-  // 빈 응답이면 한 번 더 시도 (temperature 올려서)
+  // 빈 응답이면 한 번 더 시도 (thinking 끄고 temperature 올려서)
   if (!text || text.trim().length < 5) {
-    console.warn(`[Gemini] 빈 응답 → 재시도 (temperature 1.2)`);
+    console.warn(`[Gemini] 빈 응답 → 재시도 (thinking 꺼짐, temperature 1.2)`);
     const retryModel = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       systemInstruction: systemPrompt + `\n\n[중요] 반드시 내용을 생성해. 빈 응답 금지.`,
-      generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
+      generationConfig: {
+        temperature: 1.2,
+        maxOutputTokens: 500,
+        // @ts-ignore — 재시도에선 thinking 완전 비활성화
+        thinkingConfig: { thinkingBudget: 0 },
+      },
       safetySettings,
     });
     const retry = await retryModel.generateContent(userPrompt);
-    const retryText = retry.response.text();
-    if (retryText && retryText.trim().length >= 5) return retryText;
+    try {
+      const retryText = retry.response.text();
+      if (retryText && retryText.trim().length >= 5) return retryText;
+    } catch {
+      const candidate = retry.response.candidates?.[0];
+      if (candidate?.content?.parts) {
+        const extracted = candidate.content.parts
+          .filter((p: { text?: string }) => p.text)
+          .map((p: { text?: string }) => p.text)
+          .join("");
+        if (extracted && extracted.trim().length >= 5) return extracted;
+      }
+    }
   }
 
   if (text && smellsLikeBot(text)) {
@@ -371,12 +405,21 @@ async function generateWithGemini(
     const retryModel = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       systemInstruction: systemPrompt + `\n\n[긴급] AI 티 났다. 완전 다르게 써.`,
-      generationConfig: { temperature: 1.2, maxOutputTokens: 500 },
+      generationConfig: {
+        temperature: 1.2,
+        maxOutputTokens: 500,
+        // @ts-ignore
+        thinkingConfig: { thinkingBudget: 0 },
+      },
       safetySettings,
     });
     const retry = await retryModel.generateContent(userPrompt);
-    const retryText = retry.response.text();
-    if (retryText) return retryText;
+    try {
+      const retryText = retry.response.text();
+      if (retryText) return retryText;
+    } catch {
+      // ignore
+    }
   }
   return text || null;
 }
