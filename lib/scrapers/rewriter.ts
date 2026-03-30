@@ -44,7 +44,10 @@ async function generateWithGemini(
       systemInstruction: systemPrompt,
       generationConfig: {
         temperature: 0.9,
-        maxOutputTokens: 800, // 리라이팅은 좀 더 길게
+        maxOutputTokens: 2000,
+        // Gemini 2.5 Flash thinking 모델 — thinking 토큰 제한
+        // @ts-expect-error — thinkingConfig 타입 미정의 가능
+        thinkingConfig: { thinkingBudget: 256 },
       },
       safetySettings,
     });

@@ -291,7 +291,11 @@ async function generateWithGemini(
       systemInstruction: systemPrompt,
       generationConfig: {
         temperature: 0.9,
-        maxOutputTokens: 500,
+        maxOutputTokens: 2000,
+        // Gemini 2.5 Flash는 thinking 모델 — thinking 토큰을 제한해야
+        // 실제 출력에 토큰이 충분히 배분됨
+        // @ts-expect-error — thinkingConfig는 아직 타입 정의에 없을 수 있음
+        thinkingConfig: { thinkingBudget: 256 },
       },
       safetySettings,
     });
