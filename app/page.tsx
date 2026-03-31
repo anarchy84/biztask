@@ -7,7 +7,7 @@
 
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/utils/supabase/client";
@@ -149,6 +149,13 @@ function Home() {
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
   const [isVip, setIsVip] = useState(false); // VIP 크리에이터 여부
 
+  // ─── 무한 스크롤 페이징 상태 ───
+  const POSTS_PER_PAGE = 20; // 한 페이지당 게시글 수
+  const [page, setPage] = useState(0);                   // 현재 페이지 (0부터 시작)
+  const [hasMore, setHasMore] = useState(true);           // 더 불러올 데이터 있는지
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // 추가 로딩 중
+  const sentinelRef = useRef<HTMLDivElement | null>(null); // 스크롤 감지용 센티넬 요소
+
   // ─── 카테고리 (글 주제 태그) 관련 상태 ───
   type Category = { id: string; name: string; color: string; sort_order: number };
   const [categories, setCategories] = useState<Category[]>([]);     // DB categories 테이블
@@ -177,9 +184,14 @@ function Home() {
   // 커뮤니티 생성 성공 토스트 표시 여부
   const [comSuccessToast, setComSuccessToast] = useState(false);
 
-  // ─── 게시글 목록 불러오기 ───
+  // ─── 게시글 목록 불러오기 (페이징 지원) ───
+  // pageNum: 페이지 번호 (0부터 시작)
+  // isAppend: true면 기존 배열 뒤에 병합, false면 전체 교체 (첫 로드 or 필터 변경)
   const fetchPosts = useCallback(
-    async (category: string, sort: string) => {
+    async (category: string, sort: string, pageNum: number = 0, isAppend: boolean = false) => {
+      const from = pageNum * POSTS_PER_PAGE;
+      const to = from + POSTS_PER_PAGE - 1; // Supabase range()는 inclusive
+
       let query = supabase
         .from("posts")
         .select(
@@ -207,8 +219,25 @@ function Home() {
         query = query.order("created_at", { ascending: false });
       }
 
-      const { data } = await query.limit(20);
-      if (data) setPosts(data as PostWithAuthor[]);
+      // range()로 정확한 구간 요청 (limit 대신)
+      const { data } = await query.range(from, to);
+
+      if (data) {
+        if (isAppend) {
+          // 추가 로드: 기존 배열 뒤에 병합 (덮어씌우기 X)
+          setPosts((prev) => [...prev, ...(data as PostWithAuthor[])]);
+        } else {
+          // 첫 로드 or 필터 변경: 전체 교체
+          setPosts(data as PostWithAuthor[]);
+        }
+
+        // 받아온 데이터가 POSTS_PER_PAGE보다 적으면 → 더 이상 없음
+        setHasMore(data.length >= POSTS_PER_PAGE);
+      } else {
+        // 에러 또는 빈 응답
+        if (!isAppend) setPosts([]);
+        setHasMore(false);
+      }
     },
     []
   );
@@ -477,16 +506,48 @@ function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── useEffect 2: 카테고리/정렬 변경 시 게시글만 다시 로드 ───
+  // ─── useEffect 2: 카테고리/정렬 변경 시 게시글 처음부터 다시 로드 ───
+  // 필터가 바뀌면 page=0으로 리셋 + 전체 교체
   useEffect(() => {
     const loadPosts = async () => {
       setLoading(true);
-      await fetchPosts(currentCategory, currentSort);
+      setPage(0);
+      setHasMore(true);
+      await fetchPosts(currentCategory, currentSort, 0, false);
       setLoading(false);
     };
 
     loadPosts();
   }, [currentCategory, currentSort, fetchPosts]);
+
+  // ─── useEffect 3: Intersection Observer로 무한 스크롤 ───
+  // 센티넬 요소가 뷰포트에 들어오면 다음 페이지 로드
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // 센티넬이 보이고 + 더 불러올 데이터 있고 + 현재 로딩 중 아닐 때
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && !loading) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          setIsLoadingMore(true);
+
+          fetchPosts(currentCategory, currentSort, nextPage, true).finally(() => {
+            setIsLoadingMore(false);
+          });
+        }
+      },
+      { threshold: 0.1, rootMargin: "200px" } // 200px 미리 감지 (부드러운 UX)
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasMore, isLoadingMore, loading, page, currentCategory, currentSort, fetchPosts]);
 
   // ─── URL 파라미터 조합 헬퍼 ───
   function buildCategoryUrl(category: string): string {
@@ -945,6 +1006,25 @@ function Home() {
               />
             </Link>
           ))}
+
+          {/* ─── 무한 스크롤: 추가 로딩 인디케이터 ─── */}
+          {isLoadingMore && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              <span className="ml-2 text-sm text-muted">게시글 불러오는 중...</span>
+            </div>
+          )}
+
+          {/* ─── 무한 스크롤: 더 이상 글이 없을 때 ─── */}
+          {!loading && !hasMore && posts.length > 0 && (
+            <div className="py-6 text-center text-sm text-muted">
+              모든 게시글을 확인했습니다
+            </div>
+          )}
+
+          {/* ─── 무한 스크롤: 센티넬 요소 (Intersection Observer 감지용) ─── */}
+          {/* 이 요소가 뷰포트에 들어오면 다음 페이지 로드 트리거 */}
+          <div ref={sentinelRef} className="h-1" />
         </section>
 
         {/* ═══════════════════════════════════════════ */}
