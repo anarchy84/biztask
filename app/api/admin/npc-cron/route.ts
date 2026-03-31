@@ -659,69 +659,68 @@ async function executeNpcCron(
 
       const aiResult = await generateWithAI(apiKey, systemPrompt, commentPrompt);
 
-        if (aiResult.text) {
-          const trimmed = aiResult.text.trim();
-          if (trimmed.toUpperCase() === "SKIP" || trimmed.length < 2) {
-            summary.skipped++;
-            summary.details?.push({
-              action: "comment",
-              persona: persona.nickname,
-              success: true,
-              detail: `"${targetPost.title.slice(0, 20)}..." SKIP`,
-              relevance,
-            });
-          } else {
-            const { error } = await supabase
-              .from("comments")
-              .insert({ post_id: targetPost.id, user_id: persona.user_id, content: trimmed });
-
-            if (!error) {
-              const { data: cp } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
-              await supabase
-                .from("posts")
-                .update({ comment_count: (cp?.comment_count ?? 0) + 1 })
-                .eq("id", targetPost.id);
-
-              await supabase
-                .from("personas")
-                .update({
-                  today_comments: todayComments + 1,
-                  total_comments: (persona.total_comments ?? 0) + 1,
-                  last_active_at: now.toISOString(),
-                })
-                .eq("id", persona.id);
-
-              summary.executed++;
-              summary.comments++;
-              summary.details?.push({
-                action: "comment",
-                persona: persona.nickname,
-                success: true,
-                detail: `"${targetPost.title.slice(0, 20)}..." (관심도${relevance}점)`,
-                provider: aiResult.provider,
-                relevance,
-              });
-            } else {
-              summary.errors++;
-              summary.details?.push({
-                action: "comment",
-                persona: persona.nickname,
-                success: false,
-                detail: `댓글 저장 실패`,
-                error: error.message,
-              });
-            }
-          }
-        } else {
+      if (aiResult.text) {
+        const trimmed = aiResult.text.trim();
+        if (trimmed.toUpperCase() === "SKIP" || trimmed.length < 2) {
           summary.skipped++;
           summary.details?.push({
             action: "comment",
             persona: persona.nickname,
             success: true,
-            detail: `AI 생성 실패 → 스킵`,
+            detail: `"${targetPost.title.slice(0, 20)}..." SKIP`,
             relevance,
           });
+        } else {
+          const { error } = await supabase
+            .from("comments")
+            .insert({ post_id: targetPost.id, user_id: persona.user_id, content: trimmed });
+
+          if (!error) {
+            const { data: cp } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
+            await supabase
+              .from("posts")
+              .update({ comment_count: (cp?.comment_count ?? 0) + 1 })
+              .eq("id", targetPost.id);
+
+            await supabase
+              .from("personas")
+              .update({
+                today_comments: todayComments + 1,
+                total_comments: (persona.total_comments ?? 0) + 1,
+                last_active_at: now.toISOString(),
+              })
+              .eq("id", persona.id);
+
+            summary.executed++;
+            summary.comments++;
+            summary.details?.push({
+              action: "comment",
+              persona: persona.nickname,
+              success: true,
+              detail: `"${targetPost.title.slice(0, 20)}..." (관심도${relevance}점)`,
+              provider: aiResult.provider,
+              relevance,
+            });
+          } else {
+            summary.errors++;
+            summary.details?.push({
+              action: "comment",
+              persona: persona.nickname,
+              success: false,
+              detail: `댓글 저장 실패`,
+              error: error.message,
+            });
+          }
         }
+      } else {
+        summary.skipped++;
+        summary.details?.push({
+          action: "comment",
+          persona: persona.nickname,
+          success: true,
+          detail: `AI 생성 실패 → 스킵`,
+          relevance,
+        });
       }
     }
     // ═══ 추천(Upvote) ═══
