@@ -1,12 +1,14 @@
 // ================================================================
 // 콘텐츠 팜 — 만능 HTML 커뮤니티 스크래퍼
-// 날짜: 2026-03-30
+// 날짜: 2026-03-31
 // 용도: 보배드림, 개드립, 디시인사이드 등 국내 커뮤니티 베스트글 스크래핑
 // 핵심: CSS Selector를 Config로 주입받아 어떤 커뮤니티든 유연하게 파싱
-// 의존성: cheerio (이미 설치됨)
+// 변경: Anti-Bot 헤더 모듈 적용 (랜덤 UA + Jitter + 검색엔진 Referer)
+// 의존성: cheerio (이미 설치됨), anti-bot.ts (자체 모듈)
 // ================================================================
 
 import type { Scraper, ScrapedArticle } from "./types";
+import { generateAntiBotHeaders, randomJitter, getSmartReferer } from "./anti-bot";
 
 // ─── HTML 스크래퍼 설정 타입 ───
 // 커뮤니티마다 HTML 구조가 다르므로 CSS Selector를 외부에서 주입
@@ -39,6 +41,10 @@ export interface HtmlScraperConfig {
   maxItems?: number;        // 한 번에 가져올 최대 글 수 (기본값: 5)
   encoding?: string;        // 페이지 인코딩 (기본값: utf-8, 일부 사이트는 euc-kr)
 
+  // ─── 공지사항 건너뛰기 (더쿠 등에서 상단 고정 공지 제외용) ───
+  // listItem 선택 시 이 클래스가 포함된 요소는 스킵
+  skipSelector?: string;  // 예: ".notice" → tr.notice 스킵
+
   // ─── 댓글 AJAX API (더쿠 등 댓글이 JS로 로딩되는 사이트용) ───
   // 설정 시 HTML 파싱 대신 API 호출로 댓글 수집
   commentApi?: {
@@ -53,47 +59,30 @@ export interface HtmlScraperConfig {
   };
 }
 
-// ─── 최신 Chrome User-Agent (2026년 기준) ───
-const CHROME_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
-// ─── 공통 HTTP 헤더 (브라우저처럼 보이게) ───
-const BASE_HEADERS: Record<string, string> = {
-  "User-Agent": CHROME_USER_AGENT,
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-  "Accept-Encoding": "gzip, deflate, br",
-  "Cache-Control": "no-cache",
-  Pragma: "no-cache",
-  "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24"',
-  "Sec-Ch-Ua-Mobile": "?0",
-  "Sec-Ch-Ua-Platform": '"Windows"',
-  "Sec-Fetch-Dest": "document",
-  "Sec-Fetch-Mode": "navigate",
-  "Sec-Fetch-Site": "same-origin",
-  "Sec-Fetch-User": "?1",
-  "Upgrade-Insecure-Requests": "1",
-};
-
 // ================================================================
 // HtmlScraper 클래스 — Scraper 인터페이스 구현
+// Anti-Bot 헤더 모듈 사용: 매 요청마다 랜덤 UA + 랜덤 Referer
 // ================================================================
 export class HtmlScraper implements Scraper {
   name: string;
   category: string;
   private config: HtmlScraperConfig;
-  private headers: Record<string, string>;
 
   constructor(config: HtmlScraperConfig) {
     this.name = config.name;
     this.category = config.category;
     this.config = config;
+  }
 
-    // 공통 헤더 + 사이트별 커스텀 헤더 병합
-    this.headers = {
-      ...BASE_HEADERS,
-      ...(config.customHeaders || {}),
+  // ─── 매 요청마다 새로운 Anti-Bot 헤더 생성 ───
+  // 기존: 고정 헤더 1벌 → 변경: 매번 랜덤 조합
+  private getHeaders(): Record<string, string> {
+    const siteReferer = this.config.customHeaders?.Referer
+      || getSmartReferer(this.config.baseUrl);
+
+    return {
+      ...generateAntiBotHeaders(siteReferer),
+      ...(this.config.customHeaders || {}),
     };
   }
 
@@ -145,11 +134,14 @@ export class HtmlScraper implements Scraper {
     return src;
   }
 
-  // ─── HTTP 요청 유틸 (타임아웃 + 에러 처리 + EUC-KR 인코딩 지원) ───
-  // 웃긴대학 등 일부 사이트는 EUC-KR 인코딩을 사용하므로 디코딩 처리 필요
+  // ─── HTTP 요청 유틸 (Anti-Bot 헤더 + Jitter + EUC-KR 인코딩 지원) ───
+  // 매 요청마다 랜덤 헤더 + 약간의 랜덤 딜레이로 봇 탐지 회피
   private async fetchPage(url: string): Promise<string> {
+    // 요청 전 랜덤 딜레이 (200ms~800ms) — 기계적 패턴 방지
+    await randomJitter(200, 800);
+
     const response = await fetch(url, {
-      headers: this.headers,
+      headers: this.getHeaders(),  // 매번 새로운 랜덤 헤더
       redirect: "follow",
       signal: AbortSignal.timeout(15000), // 15초 타임아웃
     });
@@ -192,7 +184,7 @@ export class HtmlScraper implements Scraper {
       const response = await fetch(api.url, {
         method: api.method,
         headers: {
-          ...this.headers,
+          ...this.getHeaders(),
           "Content-Type": "application/x-www-form-urlencoded",
           Referer: articleUrl,
         },
@@ -265,6 +257,14 @@ export class HtmlScraper implements Scraper {
         if (result.length >= maxItems) return false; // 최대 개수 도달 시 중단
 
         const $item = $(element);
+
+        // ─── 공지사항 건너뛰기 (더쿠 등 상단 고정글 필터) ───
+        // skipSelector가 설정된 경우, 해당 클래스/셀렉터에 매칭되면 스킵
+        if (this.config.skipSelector) {
+          if ($item.is(this.config.skipSelector) || $item.hasClass("notice")) {
+            return; // continue (다음 아이템으로)
+          }
+        }
 
         // 링크 추출
         const $link = $item.find(selectors.listLink).first();
@@ -476,6 +476,8 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
 
   // ────────────────────────────────────────────
   // 1. 보배드림 — 베스트 게시글
+  // 댓글: AJAX 로딩이지만 초기 HTML에 #cmt_reply > li > dl > dd 구조로 일부 존재
+  // Fallback: .basiclist li dd (PC/모바일 공통)
   // ────────────────────────────────────────────
   {
     name: "보배드림 베스트",
@@ -490,8 +492,9 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
       listTitle: "a.bsubject",
       contentBody: ".bodyCont",
       contentImages: ".bodyCont img",
-      commentItem: ".cmt_info",
-      commentText: ".cmt_txt_cont",
+      // 댓글: #cmt_reply 안의 li > dl > dd (첫 번째 dd가 댓글 텍스트)
+      commentItem: "#cmt_reply li",
+      commentText: "dd",
     },
     customHeaders: {
       Referer: "https://www.bobaedream.co.kr/",
@@ -501,6 +504,10 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
 
   // ────────────────────────────────────────────
   // 2. 디시인사이드 — 실시간베스트 (실베)
+  // 주의: Cloudflare 봇차단 강력 → Anti-Bot 헤더 필수
+  // 수정: X-Requested-With/Cookie 제거 (AJAX 모드로 인식되면 봇 차단)
+  // 본문: .write_div (확인됨, 서버사이드 HTML에 존재)
+  // 댓글: .reply_info → .usertxt (댓글은 HTML에 있음)
   // ────────────────────────────────────────────
   {
     name: "디시 실베",
@@ -511,17 +518,16 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     baseUrl: "https://gall.dcinside.com",
     selectors: {
       listItem: "tr.us-post",
-      listLink: "a:not(.reply_numbox)",
-      listTitle: "a:not(.reply_numbox)",
+      listLink: "td.gall_tit a:not(.reply_numbox)",
+      listTitle: "td.gall_tit a:not(.reply_numbox)",
       contentBody: ".write_div",
       contentImages: ".write_div img",
       commentItem: ".reply_info",
       commentText: ".usertxt",
     },
     customHeaders: {
-      Referer: "https://gall.dcinside.com/",
-      Cookie: "PHPSESSID=dummy; ci_c=0",
-      "X-Requested-With": "XMLHttpRequest",
+      // Referer만! Cookie/XHR 헤더 삭제 → 일반 브라우저 접근으로 위장
+      Referer: "https://gall.dcinside.com/board/lists/?id=dcbest",
     },
     maxItems: 3,
   },
@@ -580,6 +586,10 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
       contentImages: ".xe_content img",           // 본문 이미지
       // 더쿠 댓글은 HTML에 없음 → commentApi로 AJAX 호출
     },
+    // ─── 공지사항 건너뛰기 ───
+    // 더쿠 상단 공지: <tr class="notice nofn">, <tr class="notice_expand">
+    // 이 클래스가 붙은 행은 무조건 스킵
+    skipSelector: ".notice, .notice_expand",
     customHeaders: {
       Referer: "https://theqoo.net/",
     },
@@ -666,7 +676,10 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
   // ────────────────────────────────────────────
   // 7. 뽐뿌 — 자동차포럼
   // URL: https://www.ppomppu.co.kr/zboard/zboard.php?id=car
-  // 구조: tr.baseList → a.baseList-title
+  // 수정사항:
+  //   1) baseUrl: /zboard 경로 포함 (상대경로 view.php → /zboard/view.php로 매핑)
+  //   2) 셀렉터: 실제 서버사이드 HTML 기준으로 재설정
+  //   3) 봇차단 빡셈 → Anti-Bot 헤더로 대응 (403 가능성 있음)
   // 본문: td.board-contents / 댓글: div.comment_wrapper → [id^="commentContent_"]
   // ────────────────────────────────────────────
   {
@@ -675,18 +688,21 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     contentType: "humor",
     sourceSite: "뽐뿌",
     listUrl: "https://www.ppomppu.co.kr/zboard/zboard.php?id=car",
-    baseUrl: "https://www.ppomppu.co.kr",
+    // 핵심 수정: baseUrl에 /zboard 포함!
+    // 리스트의 href가 "view.php?id=car&no=..." 형태 (상대경로)
+    // → baseUrl + "/" + href = /zboard/view.php?id=car&no=...
+    baseUrl: "https://www.ppomppu.co.kr/zboard",
     selectors: {
-      listItem: "tr.baseList",                 // 글 목록 행
-      listLink: "a.baseList-title",            // 제목 링크
-      listTitle: "a.baseList-title",           // 제목 텍스트
+      listItem: "tr[class*='list']",           // 글 목록 행 (다양한 class 패턴 대응)
+      listLink: "a[href*='view.php']",         // view.php 링크를 직접 찾기
+      listTitle: "a[href*='view.php']",        // 제목 텍스트
       contentBody: "td.board-contents",        // 상세 페이지 본문
       contentImages: "td.board-contents img",  // 본문 이미지
       commentItem: "div.comment_wrapper",              // 댓글 wrapper
       commentText: "[id^='commentContent_']",          // 댓글 본문
     },
     customHeaders: {
-      Referer: "https://www.ppomppu.co.kr/",
+      Referer: "https://www.ppomppu.co.kr/zboard/zboard.php?id=car",
     },
     maxItems: 5,
   },
