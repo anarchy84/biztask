@@ -16,6 +16,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { CATEGORY_LABELS } from "@/lib/constants";
 
 // ─── 타입 정의 ───
+// persona_config: 어드민이 실시간 수정하는 동적 페르소나 설정 (JSONB)
+interface PersonaConfig {
+  group?: string;         // "자영업/사업자" | "테크/인사이트" | "MZ/커뮤니티" | "질문빌런/뉴비"
+  background?: string;    // 캐릭터 배경 스토리
+  speech_style?: string;  // 말투 강제 규칙
+  affinity?: number;      // 0~100, 아나키(KOL) 우호도
+  keywords?: string[];    // 관심 키워드 배열
+}
+
 interface Persona {
   id: string;
   user_id: string;
@@ -42,6 +51,8 @@ interface Persona {
   today_comments?: number;
   today_likes?: number;
   today_reset_date?: string;
+  // 🌍 어드민 관리형 페르소나 설정 (DB에서 실시간 fetch)
+  persona_config?: PersonaConfig;
 }
 
 interface ActionResult {
@@ -274,20 +285,46 @@ const PERSONA_ROLE_DIRECTIVE: Record<string, string> = {
 };
 
 // ────────────────────────────────────────────────────────────
-// 동적 System Prompt 생성 (관심도 + 페르소나 Role 기반)
+// 동적 System Prompt 생성 (persona_config DB 기반 + 인간미 프로토콜)
 // ────────────────────────────────────────────────────────────
+// 2026-03-31 전면 개편:
+//   - 하드코딩 PERSONA_SPEECH_GUIDE → DB persona_config.speech_style 우선
+//   - 인간미 주입 프로토콜 적용 (작위성 제거 + 파벌별 말투)
+//   - KOL(아나키) 케어 로직 통합
+// ────────────────────────────────────────────────────────────
+
+// ─── 파벌별 글로벌 말투 규칙 (인간미 주입 프로토콜 Task 3) ───
+const GROUP_SPEECH_RULES: Record<string, string> = {
+  "자영업/사업자": `[파벌: 현장파] 실전 경험에서 나오는 투박하고 진정성 있는 말투. 이론이 아닌 경험 중심. 가끔 한숨 섞인 자조 유머. 온화한 중년은 ~요, ^^를 현대적으로. 90년대식 사투리(했당께), 노인 말투(허허, 음허허) 절대 금지.`,
+  "테크/인사이트": `[파벌: 직장인/전문가] "넵", "인사이트가 훌륭하네요" 식 비즈니스 커뮤니티 말투 OK. 분석적이고 효율 중심. 영단어 섞는 건 자연스럽게. 과한 전문가 티 금지.`,
+  "MZ/커뮤니티": `[파벌: MZ/디시형] "ㄹㅇ", "ㅁㅊ", "폼 미쳤다", "알잘딱깔센" 등 최신 밈과 자음 위주. 음슴체: "인정함 ㅇㅇ", "반박시 네 말이 맞음" 식. 짧고 날카로운 반응. 의외의 핵심 한방.`,
+  "질문빌런/뉴비": `[파벌: 뉴비/질문형] 친절하고 솔직한 질문. 모르면 모른다고. 배우면 진심으로 기뻐함. 아는 척 금지. 끈질기게 질문하되 순수하게.`,
+};
+
 function buildDynamicSystemPrompt(
   persona: Persona,
-  relevanceScore: number
+  relevanceScore: number,
+  isKolPost: boolean = false  // 아나키(KOL) 글인지 여부
 ): string {
+  const config = persona.persona_config || {};
   const basePrompt = persona.prompt || "";
-  const speechGuide = PERSONA_SPEECH_GUIDE[persona.nickname] ||
-    `[말투 강제] 네 성격(${persona.personality})에 맞는 실제 한국인 말투를 써. 구어체 필수.`;
   const interests = (persona.core_interests || []).join(", ");
 
-  // ─── 페르소나 Role별 지시어 (있으면 추가) ───
+  // ── 1. 말투: DB persona_config.speech_style 우선 → 레거시 폴백 ──
+  const speechGuide = config.speech_style
+    || PERSONA_SPEECH_GUIDE[persona.nickname]
+    || `[말투 강제] 네 성격(${persona.personality})에 맞는 실제 한국인 말투를 써. 구어체 필수.`;
+
+  // ── 2. 그룹별 글로벌 말투 규칙 (인간미 주입 프로토콜) ──
+  const groupRule = GROUP_SPEECH_RULES[config.group || ""] || "";
+
+  // ── 3. 배경 스토리 (DB에서 가져옴) ──
+  const background = config.background || "";
+
+  // ── 4. Role 지시어 (AI 특화 NPC 등, 레거시 호환) ──
   const roleDirective = PERSONA_ROLE_DIRECTIVE[persona.nickname] || "";
 
+  // ── 5. 관심도 기반 전문성 지시어 ──
   let expertiseDirective = "";
   if (relevanceScore >= 80) {
     expertiseDirective =
@@ -303,16 +340,53 @@ function buildDynamicSystemPrompt(
       `길이: 10~40자. 짧을수록 좋다.`;
   }
 
+  // ── 6. KOL(아나키) 케어 지시어 (Task 4) ──
+  let kolDirective = "";
+  if (isKolPost) {
+    const affinity = config.affinity ?? 70;
+    if (affinity >= 80) {
+      kolDirective =
+        `\n[⭐ KOL 인사이트 리스펙 모드]\n` +
+        `이 글은 커뮤니티의 핵심 인물이 작성한 글이다.\n` +
+        `무조건적인 찬양은 금지. 인사이트에 대한 리스펙을 바탕으로:\n` +
+        `- 글의 핵심 포인트를 짚어서 자기 경험과 연결하거나\n` +
+        `- 긍정적인 후속 질문을 던져 대화를 확장하거나\n` +
+        `- "이 부분은 몰랐는데" 식으로 배움의 자세를 보여라\n` +
+        `- 분위기: 존경하되 아부하지 않는 동료 느낌\n`;
+    } else if (affinity >= 50) {
+      kolDirective =
+        `\n[⭐ KOL 글 반응]\n` +
+        `이 글은 커뮤니티 핵심 인물이 작성했다.\n` +
+        `평소보다 조금 더 정성스럽게 반응해라. 구체적 공감이나 질문 1개.\n`;
+    }
+    // affinity < 50인 NPC는 특별 대우 없이 평소대로
+  }
+
   return (
     `너는 "${persona.nickname}"이야. AI 아님. 한국 커뮤니티 실제 유저임.\n\n` +
+    // ── 배경 스토리 (DB persona_config) ──
+    (background ? `[니 배경]\n${background}\n\n` : "") +
     `[니 정보]\n` +
     `업종: ${persona.industry} / 성격: ${persona.personality}\n` +
     `관심사: ${interests || "잡다함"}\n` +
+    (config.keywords && config.keywords.length > 0 ? `전문 키워드: ${config.keywords.join(", ")}\n` : "") +
     `캐릭터: ${basePrompt}\n\n` +
+    // ── 개인 말투 ──
     `${speechGuide}\n` +
-    // ─── Role 지시어가 있으면 삽입 (AI 특화 NPC용) ───
+    // ── 그룹별 글로벌 규칙 (인간미 프로토콜) ──
+    (groupRule ? `\n${groupRule}\n` : "") +
+    // ── Role 지시어 (AI 특화 NPC용 레거시 호환) ──
     (roleDirective ? `\n${roleDirective}\n` : "") +
-    `${expertiseDirective}\n\n` +
+    // ── 관심도 기반 전문성 ──
+    `${expertiseDirective}\n` +
+    // ── KOL 케어 ──
+    `${kolDirective}\n` +
+    // ═══ 인간미 주입 프로토콜 (Global Rule) ═══
+    `[🚫 작위성 제거 — CRITICAL]\n` +
+    `- 90년대식 과장된 사투리 절대 금지: "했당께", "~인겨", "~말여" 금지\n` +
+    `- 노인 말투 절대 금지: "허허", "음허허", "호호", "어허" 금지\n` +
+    `- 과도한 이모지/특수문자 금지 (1~2개 OK, 도배 금지)\n` +
+    `- "~하옵니다", "~이로다" 같은 고어체 금지\n\n` +
     `[🚫 금지어 — 하나라도 쓰면 실패]\n` +
     `"좋은 글이네요", "유익한 정보", "감사합니다", "공감합니다",\n` +
     `"안녕하세요", "정리하자면", "결론적으로", "알아볼까요?",\n` +
@@ -476,6 +550,14 @@ async function executeNpcCron(
     .limit(30);
 
   const allPosts = recentPosts || [];
+
+  // ─── KOL(아나키) 감지용: VIP 유저 ID 목록 캐싱 ───
+  // 작성자가 VIP(is_vip=true)인 경우 KOL 케어 로직 적용
+  const { data: vipProfiles } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("is_vip", true);
+  const kolUserIds = new Set((vipProfiles || []).map((p: { id: string }) => p.id));
 
   for (const persona of personas) {
     // 1. 활동 시간대 체크
@@ -685,7 +767,9 @@ async function executeNpcCron(
 
       // ─── AI 댓글 생성 (카테고리별 프롬프트 분기) ───
       const isSerious = ["질문", "사업", "마케팅", "부업"].includes(targetPost.category);
-      const systemPrompt = buildDynamicSystemPrompt(persona, relevance);
+      // ─── KOL(아나키) 감지: 대상 게시글 작성자가 VIP이면 케어 모드 ───
+      const isKolPost = kolUserIds.has(targetPost.author_id);
+      const systemPrompt = buildDynamicSystemPrompt(persona, relevance, isKolPost);
 
       let commentPrompt: string;
       if (targetPost.category === "질문") {
@@ -967,7 +1051,7 @@ export async function POST(request: NextRequest) {
           "id, user_id, nickname, avatar_url, industry, personality, prompt, is_active, " +
           "total_posts, total_comments, total_likes, action_bias, core_interests, interest_weights, " +
           "active_start_hour, active_end_hour, post_frequency, comment_frequency, like_frequency, " +
-          "today_posts, today_comments, today_likes, today_reset_date"
+          "today_posts, today_comments, today_likes, today_reset_date, persona_config"
         )
         .eq("is_active", true);
       personas = (data as unknown as Persona[]) || [];
@@ -979,7 +1063,7 @@ export async function POST(request: NextRequest) {
           "id, user_id, nickname, avatar_url, industry, personality, prompt, is_active, " +
           "total_posts, total_comments, total_likes, action_bias, core_interests, interest_weights, " +
           "active_start_hour, active_end_hour, post_frequency, comment_frequency, like_frequency, " +
-          "today_posts, today_comments, today_likes, today_reset_date"
+          "today_posts, today_comments, today_likes, today_reset_date, persona_config"
         )
         .eq("id", personaId)
         .single();
