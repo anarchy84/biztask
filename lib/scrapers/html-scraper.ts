@@ -38,6 +38,19 @@ export interface HtmlScraperConfig {
   // ─── 옵션 ───
   maxItems?: number;        // 한 번에 가져올 최대 글 수 (기본값: 5)
   encoding?: string;        // 페이지 인코딩 (기본값: utf-8, 일부 사이트는 euc-kr)
+
+  // ─── 댓글 AJAX API (더쿠 등 댓글이 JS로 로딩되는 사이트용) ───
+  // 설정 시 HTML 파싱 대신 API 호출로 댓글 수집
+  commentApi?: {
+    url: string;                // API 엔드포인트 (예: "https://theqoo.net/index.php")
+    method: "POST" | "GET";     // HTTP 메서드
+    documentIdPattern: string;  // URL에서 document_srl 추출용 정규식 (예: "/hot/(\\d+)")
+    // POST body를 만드는 템플릿 — {{documentId}}를 실제 ID로 치환
+    bodyTemplate: string;
+    // JSON 응답 파싱 설정
+    commentListKey: string;     // 댓글 배열 키 (예: "comment_list")
+    commentTextKey: string;     // 개별 댓글 텍스트 키 (예: "ct")
+  };
 }
 
 // ─── 최신 Chrome User-Agent (2026년 기준) ───
@@ -155,6 +168,83 @@ export class HtmlScraper implements Scraper {
     return response.text();
   }
 
+  // ─── 댓글 AJAX API 호출 (더쿠 등 JS 동적 로딩 사이트용) ───
+  // 일부 커뮤니티는 댓글을 JS로 동적 로딩하므로 HTML에 없음
+  // → API 엔드포인트를 직접 호출해서 JSON으로 받아옴
+  private async fetchCommentsViaApi(articleUrl: string): Promise<string[]> {
+    const api = this.config.commentApi;
+    if (!api) return [];
+
+    try {
+      // URL에서 document ID 추출 (예: "/hot/4145542080" → "4145542080")
+      const idMatch = articleUrl.match(new RegExp(api.documentIdPattern));
+      if (!idMatch || !idMatch[1]) {
+        console.warn(`[${this.name}] 댓글 API: document ID 추출 실패 — ${articleUrl}`);
+        return [];
+      }
+      const documentId = idMatch[1];
+
+      // POST body 생성 ({{documentId}} → 실제 ID로 치환)
+      const body = api.bodyTemplate.replace(/\{\{documentId\}\}/g, documentId);
+
+      console.log(`[${this.name}] 댓글 API 호출: ${api.url} (document: ${documentId})`);
+
+      const response = await fetch(api.url, {
+        method: api.method,
+        headers: {
+          ...this.headers,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Referer: articleUrl,
+        },
+        body: api.method === "POST" ? body : undefined,
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        console.warn(`[${this.name}] 댓글 API HTTP ${response.status}`);
+        return [];
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any = await response.json();
+      const commentList = json[api.commentListKey];
+
+      if (!Array.isArray(commentList)) {
+        console.warn(`[${this.name}] 댓글 API: ${api.commentListKey} 배열 없음`);
+        return [];
+      }
+
+      const comments: string[] = [];
+      for (const cmt of commentList) {
+        if (comments.length >= 5) break;
+
+        const rawText = cmt[api.commentTextKey] || "";
+        // HTML 태그 제거
+        const clean = this.stripHtml(rawText);
+
+        // 비회원 차단 메시지 필터링 (더쿠: 1시간 이내 댓글 비공개)
+        if (/commentWarningMessage|비회원은.*읽을 수 없습니다/i.test(rawText)) continue;
+
+        // 길이 필터 (너무 짧거나 긴 댓글 제외)
+        if (clean.length >= 5 && clean.length <= 200) {
+          // 광고성/봇 댓글 필터
+          const isSpam = /https?:\/\/|텔레그램|카톡|문의|홍보|광고|클릭/i.test(clean);
+          if (!isSpam) {
+            comments.push(clean);
+          }
+        }
+      }
+
+      return comments;
+    } catch (err) {
+      console.error(
+        `[${this.name}] 댓글 API 호출 실패:`,
+        err instanceof Error ? err.message : String(err)
+      );
+      return [];
+    }
+  }
+
   // ================================================================
   // 1단계: 글 목록 가져오기 (URL + 제목)
   // ================================================================
@@ -211,6 +301,9 @@ export class HtmlScraper implements Scraper {
 
         if (title.length < 3) return; // 너무 짧은 제목 스킵
 
+        // 광고/이벤트/공지 URL 필터링 (더쿠 등에서 /event/ /notice/ 링크 제외)
+        if (/\/(event|notice|ad|promotion)\//i.test(href)) return;
+
         result.push({ sourceUrl: href, sourceTitle: title });
       });
 
@@ -260,30 +353,8 @@ export class HtmlScraper implements Scraper {
       // 본문 텍스트 추출
       let bodyText = this.stripHtml($body.html() || "");
 
-      // 너무 짧으면 스킵
-      if (bodyText.length < 50) {
-        console.warn(
-          `[${this.name}] 본문 너무 짧음 (${bodyText.length}자): ${url}`
-        );
-        return null;
-      }
-
-      // 한글 콘텐츠 필터 (최소 10% — 유머글은 이미지 위주라 비율 낮게)
-      const koreanChars = bodyText.match(/[가-힣]/g) || [];
-      const koreanRatio = koreanChars.length / bodyText.length;
-      if (koreanRatio < 0.1) {
-        console.warn(
-          `[${this.name}] 한글 비율 낮음 (${(koreanRatio * 100).toFixed(1)}%): ${url}`
-        );
-        return null;
-      }
-
-      // 너무 길면 3000자로 자르기
-      if (bodyText.length > 3000) {
-        bodyText = bodyText.slice(0, 3000) + "...";
-      }
-
-      // ─── 이미지 추출 ───
+      // ─── 이미지 추출 (본문 길이 체크보다 먼저 실행) ───
+      // 유머 카테고리는 이미지만 있는 글이 많으므로 이미지 먼저 확인
       const images: string[] = [];
       $(selectors.contentImages).each((_i, imgEl) => {
         if (images.length >= 10) return false; // 최대 10장
@@ -299,32 +370,71 @@ export class HtmlScraper implements Scraper {
         }
       });
 
+      // 너무 짧으면 스킵 (단, 이미지가 있으면 이미지 위주 글로 간주하여 허용)
+      if (bodyText.length < 50 && images.length === 0) {
+        console.warn(
+          `[${this.name}] 본문 너무 짧고 이미지도 없음 (${bodyText.length}자): ${url}`
+        );
+        return null;
+      }
+
+      // 이미지 위주 글은 본문이 짧아도 제목을 본문으로 대체
+      if (bodyText.length < 10 && images.length > 0) {
+        bodyText = title; // 제목을 본문으로 사용 (이미지가 핵심 콘텐츠)
+        console.log(`[${this.name}] 이미지 위주 글 — 제목을 본문으로 대체 (${images.length}장)`);
+      }
+
+      // 한글 콘텐츠 필터 (최소 10% — 유머글은 이미지 위주라 비율 낮게)
+      // 이미지 위주 글(본문=제목)은 필터 패스
+      const koreanChars = bodyText.match(/[가-힣]/g) || [];
+      const koreanRatio = bodyText.length > 0 ? koreanChars.length / bodyText.length : 0;
+      if (koreanRatio < 0.1 && images.length === 0) {
+        console.warn(
+          `[${this.name}] 한글 비율 낮음 (${(koreanRatio * 100).toFixed(1)}%): ${url}`
+        );
+        return null;
+      }
+
+      // 너무 길면 3000자로 자르기
+      if (bodyText.length > 3000) {
+        bodyText = bodyText.slice(0, 3000) + "...";
+      }
+
       // ─── 댓글 크롤링 (Few-Shot 프롬프팅용) ───
       // 실제 유저들의 반응을 최대 5개까지 수집하여 AI에게 컨닝 페이퍼로 제공
       const comments: string[] = [];
-      const { commentItem, commentText } = selectors;
-      if (commentItem) {
-        $(commentItem).each((_i, cmtEl) => {
-          if (comments.length >= 5) return false; // 최대 5개
 
-          // 댓글 텍스트 추출
-          let cmtContent = "";
-          if (commentText) {
-            cmtContent = $(cmtEl).find(commentText).first().text().trim();
-          } else {
-            cmtContent = $(cmtEl).text().trim();
-          }
+      // 방법 1: 댓글 API 호출 (더쿠 등 JS 동적 로딩 사이트)
+      if (this.config.commentApi) {
+        const apiComments = await this.fetchCommentsViaApi(url);
+        comments.push(...apiComments);
+        console.log(`[${this.name}] 댓글 API로 ${comments.length}개 수집 (Few-Shot용)`);
+      } else {
+        // 방법 2: HTML에서 직접 파싱 (기본 방식)
+        const { commentItem, commentText } = selectors;
+        if (commentItem) {
+          $(commentItem).each((_i, cmtEl) => {
+            if (comments.length >= 5) return false; // 최대 5개
 
-          // 너무 짧거나 긴 댓글 필터링
-          if (cmtContent.length >= 5 && cmtContent.length <= 200) {
-            // 광고성/봇 댓글 필터
-            const isSpam = /https?:\/\/|텔레그램|카톡|문의|홍보|광고|클릭/i.test(cmtContent);
-            if (!isSpam) {
-              comments.push(cmtContent);
+            // 댓글 텍스트 추출
+            let cmtContent = "";
+            if (commentText) {
+              cmtContent = $(cmtEl).find(commentText).first().text().trim();
+            } else {
+              cmtContent = $(cmtEl).text().trim();
             }
-          }
-        });
-        console.log(`[${this.name}] 댓글 ${comments.length}개 수집 (Few-Shot용)`);
+
+            // 너무 짧거나 긴 댓글 필터링
+            if (cmtContent.length >= 5 && cmtContent.length <= 200) {
+              // 광고성/봇 댓글 필터
+              const isSpam = /https?:\/\/|텔레그램|카톡|문의|홍보|광고|클릭/i.test(cmtContent);
+              if (!isSpam) {
+                comments.push(cmtContent);
+              }
+            }
+          });
+          console.log(`[${this.name}] 댓글 ${comments.length}개 수집 (Few-Shot용)`);
+        }
       }
 
       console.log(
@@ -417,28 +527,28 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
   },
 
   // ────────────────────────────────────────────
-  // 3. 개드립 — HOT 베스트
-  // URL: https://www.dogdrip.net/index.php?mid=hot
-  // 엔진: XpressEngine 기반. 깔끔한 시맨틱 DOM.
-  // 리스트: .vr_itemcard 안에 a.ed.title-link
+  // 3. 개드립 — 인기글 (Rhymix/XE 기반)
+  // URL: https://www.dogdrip.net/dogdrip (인기글 정렬)
+  // 서버사이드 DOM: li.popular-item → a.title-link
+  // 주의: /index.php?mid=hot 은 404 → /dogdrip 사용
   // 본문: .xe_content
-  // 댓글: .ed.comment-item 안의 .ed.text-normal (R&D에서 11개 확인)
+  // 댓글: .comment-item 안의 텍스트
   // ────────────────────────────────────────────
   {
     name: "개드립 HOT",
     category: "humor",
     contentType: "humor",
     sourceSite: "개드립",
-    listUrl: "https://www.dogdrip.net/index.php?mid=hot",
+    listUrl: "https://www.dogdrip.net/dogdrip",
     baseUrl: "https://www.dogdrip.net",
     selectors: {
-      listItem: ".vr_itemcard",                 // 게시물 카드 아이템
-      listLink: "a.ed.title-link",              // 제목 링크
-      listTitle: "a.ed.title-link",             // 제목 텍스트
-      contentBody: ".xe_content",               // 상세 페이지 본문
-      contentImages: ".xe_content img",          // 본문 이미지
-      commentItem: ".ed.comment-item",           // 댓글 아이템
-      commentText: ".ed.text-normal",            // 댓글 텍스트
+      listItem: "li.popular-item",               // 인기글 리스트 아이템
+      listLink: "a.title-link",                   // 제목 링크 (class="ed title-link")
+      listTitle: "a.title-link",                  // 제목 텍스트
+      contentBody: ".xe_content",                 // 상세 페이지 본문
+      contentImages: ".xe_content img",            // 본문 이미지
+      commentItem: ".comment-item",                // 댓글 아이템
+      commentText: ".xe_content",                  // 댓글 텍스트 (Rhymix xe_content 안에 있음)
     },
     customHeaders: {
       Referer: "https://www.dogdrip.net/",
@@ -468,11 +578,21 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
       listTitle: "td.title a",                   // 제목 텍스트
       contentBody: ".xe_content",                // 상세 페이지 본문 (XE 기반)
       contentImages: ".xe_content img",           // 본문 이미지
-      commentItem: ".comment_2_item",             // 댓글 아이템
-      commentText: ".text",                       // 댓글 텍스트
+      // 더쿠 댓글은 HTML에 없음 → commentApi로 AJAX 호출
     },
     customHeaders: {
       Referer: "https://theqoo.net/",
+    },
+    // ─── 더쿠 댓글 AJAX API ───
+    // 더쿠는 댓글을 JS loadReply()로 동적 로딩 → POST /index.php 로 직접 호출
+    // 비회원은 1시간 이내 댓글 비공개 → 오래된 글은 정상 수집 가능
+    commentApi: {
+      url: "https://theqoo.net/index.php",
+      method: "POST",
+      documentIdPattern: "/hot/(\\d+)",            // URL에서 document_srl 추출
+      bodyTemplate: "act=dispTheqooContentCommentListTheqoo&document_srl={{documentId}}&cpage=0",
+      commentListKey: "comment_list",              // JSON 응답의 댓글 배열 키
+      commentTextKey: "ct",                        // 개별 댓글의 텍스트 키 (HTML 포함)
     },
     maxItems: 5,
   },
@@ -480,13 +600,12 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
   // ────────────────────────────────────────────
   // 5. 웃긴대학 — 웃긴자료 (오늘의 베스트)
   // URL: https://web.humoruniv.com/board/humor/list.html?table=pds&st=day
-  // 리스트: a[href*="read.html?table=pds"] (테이블 구조, 20+개)
-  // 개별글 URL: read.html?table=pds&st=day&pg=0&number={ID}
+  // 서버사이드 DOM: span.subj → a.li (href="/board/humor/read.html?...&number=ID")
+  // 개별글 URL: /board/humor/read.html?table=pds&st=day&page=0&number={ID}
   // 본문: #cnts (본문 콘텐츠 영역)
-  // 댓글: "댓글마당" 섹션 — .comment_div_2 안의 댓글 텍스트
-  //        댓글 베스트 3개 + 일반 댓글 구분됨 (39개 확인)
+  // 댓글: "댓글마당" 섹션 — 댓글 베스트 3개 + 일반 댓글 (39개 확인)
   //        댓글 길이 길고 양질 → RAG Few-Shot용 최적
-  // 인코딩: EUC-KR (encoding 옵션 필요)
+  // 인코딩: EUC-KR (encoding 옵션으로 처리)
   // ────────────────────────────────────────────
   {
     name: "웃긴대학 웃긴자료",
@@ -496,13 +615,13 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     listUrl: "https://web.humoruniv.com/board/humor/list.html?table=pds&st=day",
     baseUrl: "https://web.humoruniv.com",
     selectors: {
-      listItem: "table.list_table tr",                // 리스트 테이블 행
-      listLink: "a[href*='read.html?table=pds']",     // 제목 링크 (read.html 패턴)
-      listTitle: "a[href*='read.html?table=pds']",    // 제목 텍스트
+      listItem: "span.subj",                          // 제목 영역 (dd > span.subj)
+      listLink: "a.li",                                // 제목 링크 (href="/board/humor/read.html?...")
+      listTitle: "a.li",                               // 제목 텍스트
       contentBody: "#cnts",                            // 상세 페이지 본문
       contentImages: "#cnts img",                      // 본문 이미지
-      commentItem: ".comment_div_2",                   // 댓글마당 개별 댓글
-      commentText: ".re_txt",                          // 댓글 텍스트 영역
+      commentItem: "span.cmt_text",                       // 댓글 텍스트 span (직접 텍스트 포함)
+      // commentText 생략 — commentItem 자체가 텍스트 엘리먼트
     },
     customHeaders: {
       Referer: "https://web.humoruniv.com/",
