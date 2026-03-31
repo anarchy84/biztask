@@ -63,6 +63,7 @@ interface PublishSummary {
   commentId: string | null;  // Q&A 전문가 댓글 ID
   success: boolean;
   error: string | null;
+  debug?: string[];     // 디버그 로그 (임시)
 }
 
 // ================================================================
@@ -134,6 +135,7 @@ async function runPublishJob(): Promise<PublishSummary> {
     return { ...emptySummary, error: "창고 비어있음" };
   }
 
+  const debugLog: string[] = [];
   const summary: PublishSummary = {
     backlogId: backlogItem.id,
     title: backlogItem.title,
@@ -144,6 +146,7 @@ async function runPublishJob(): Promise<PublishSummary> {
     commentId: null,
     success: false,
     error: null,
+    debug: debugLog,
   };
 
   console.log(
@@ -209,13 +212,16 @@ async function runPublishJob(): Promise<PublishSummary> {
     finalBody = backlogItem.body_html || "";
 
     // 전문가 답변 댓글 생성 (RAG: 원본 댓글 참고)
+    debugLog.push(`Q&A 감지 → 전문가 댓글 생성 시작 (댓글 RAG: ${comments.length}개)`);
     expertCommentText = await generateExpertComment(
       backlogItem.title,
       backlogItem.body_html || "",
       comments,
-      persona
+      persona,
+      debugLog
     );
 
+    debugLog.push(`전문가 댓글 결과: ${expertCommentText ? expertCommentText.length + '자' : 'null'}`);
     console.log(`[Publisher] Q&A → 원본 유지 + 전문가 댓글 생성`);
 
   } else if (hasImages) {
@@ -413,7 +419,8 @@ async function generateExpertComment(
   title: string,
   body: string,
   originalComments: string[],
-  persona: RewriterPersona
+  persona: RewriterPersona,
+  debugLog: string[] = []
 ): Promise<string | null> {
   // ─── 원본 댓글 RAG 블록 ───
   let ragBlock = "";
@@ -459,42 +466,60 @@ ${ragBlock}
     const anthropicKey = process.env.ANTHROPIC_API_KEY || "";
     const openaiKey = process.env.OPENAI_API_KEY || "";
 
-    console.log(`[Publisher/댓글] API 키 상태 — Gemini: ${geminiKey.length}자, Anthropic: ${anthropicKey.length}자, OpenAI: ${openaiKey.length}자`);
+    debugLog.push(`API 키 상태 — Gemini: ${geminiKey.length}자, Anthropic: ${anthropicKey.length}자, OpenAI: ${openaiKey.length}자`);
 
     // 🥇 Gemini
     if (geminiKey.length > 10) {
-      console.log("[Publisher/댓글] Gemini 시도 중...");
-      const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
-      if (result) {
-        console.log(`[Publisher/댓글] ✅ Gemini 성공 (${result.length}자)`);
-        return result;
+      debugLog.push("Gemini 시도 중...");
+      try {
+        const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
+        if (result) {
+          debugLog.push(`✅ Gemini 성공 (${result.length}자)`);
+          return result;
+        }
+        debugLog.push("❌ Gemini: null 반환");
+      } catch (e) {
+        debugLog.push(`❌ Gemini 에러: ${e instanceof Error ? e.message : String(e)}`);
       }
-      console.log("[Publisher/댓글] ❌ Gemini 실패 → 다음 프로바이더");
+    } else {
+      debugLog.push("Gemini 키 없음 (skip)");
     }
 
     // 🥈 Anthropic
     if (anthropicKey.length > 10) {
-      console.log("[Publisher/댓글] Anthropic 시도 중...");
-      const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
-      if (result) {
-        console.log(`[Publisher/댓글] ✅ Anthropic 성공 (${result.length}자)`);
-        return result;
+      debugLog.push("Anthropic 시도 중...");
+      try {
+        const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
+        if (result) {
+          debugLog.push(`✅ Anthropic 성공 (${result.length}자)`);
+          return result;
+        }
+        debugLog.push("❌ Anthropic: null 반환");
+      } catch (e) {
+        debugLog.push(`❌ Anthropic 에러: ${e instanceof Error ? e.message : String(e)}`);
       }
-      console.log("[Publisher/댓글] ❌ Anthropic 실패 → 다음 프로바이더");
+    } else {
+      debugLog.push("Anthropic 키 없음 (skip)");
     }
 
     // 🥉 OpenAI
     if (openaiKey.length > 10) {
-      console.log("[Publisher/댓글] OpenAI 시도 중...");
-      const result = await generateWithOpenAI(openaiKey, systemPrompt, userPrompt);
-      if (result) {
-        console.log(`[Publisher/댓글] ✅ OpenAI 성공 (${result.length}자)`);
-        return result;
+      debugLog.push("OpenAI 시도 중...");
+      try {
+        const result = await generateWithOpenAI(openaiKey, systemPrompt, userPrompt);
+        if (result) {
+          debugLog.push(`✅ OpenAI 성공 (${result.length}자)`);
+          return result;
+        }
+        debugLog.push("❌ OpenAI: null 반환");
+      } catch (e) {
+        debugLog.push(`❌ OpenAI 에러: ${e instanceof Error ? e.message : String(e)}`);
       }
-      console.log("[Publisher/댓글] ❌ OpenAI 실패");
+    } else {
+      debugLog.push("OpenAI 키 없음 (skip)");
     }
 
-    console.log("[Publisher/댓글] 모든 AI 프로바이더 실패 — null 반환");
+    debugLog.push("모든 AI 프로바이더 실패 → null");
     return null;
   } catch (err) {
     console.error(
