@@ -20,7 +20,7 @@ import { rewriteArticle } from "@/lib/scrapers/rewriter";
 import { downloadAndUploadImages } from "@/lib/scrapers/image-uploader";
 import type { RewriterPersona } from "@/lib/scrapers/rewriter";
 import type { ScrapedArticle } from "@/lib/scrapers/types";
-import { SCRAPER_CATEGORY_MAP, SLUG_TO_LABEL, CATEGORY_COMMUNITY_MAP } from "@/lib/constants";
+import { SCRAPER_CATEGORY_MAP, SLUG_TO_LABEL, CATEGORY_COMMUNITY_MAP, getGeeknewsCategory } from "@/lib/constants";
 
 // ─── KST 시간 유틸 ───
 function getKSTDate(): string {
@@ -306,7 +306,10 @@ async function runPublishJob(): Promise<PublishSummary> {
   // STEP 5: 게시글 발행 (posts 테이블 INSERT)
   // ================================================================
   // 스크래퍼 내부 카테고리(car, ai 등) → 공식 slug(free, qa 등)로 강제 변환
-  const officialSlug = SCRAPER_CATEGORY_MAP[backlogItem.category] || "free";
+  // ※ geeknews는 SCRAPER_CATEGORY_MAP에 없음 → getGeeknewsCategory()로 랜덤 배분
+  const officialSlug = backlogItem.category === "geeknews"
+    ? getGeeknewsCategory()
+    : (SCRAPER_CATEGORY_MAP[backlogItem.category] || "free");
   const communityId = CATEGORY_COMMUNITY_MAP[officialSlug] || null;
   const postCategory = SLUG_TO_LABEL[officialSlug] || "자유";
 
