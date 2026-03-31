@@ -729,40 +729,39 @@ export default function PostDetailClient() {
             {post.title}
           </h1>
 
-          {/* 본문 (HTML 렌더링 지원) */}
-          {/* ⚠️ image_urls가 있으면 content 내 외부 <img> 태그 제거 (핫링크 차단 대응) */}
-          {/* Supabase에 업로드된 이미지는 아래 갤러리에서 정상 표시 */}
+          {/* ─── 이미지 영역 (제목 바로 아래, 본문 위) ─── */}
+          {/* image_urls가 있으면 Supabase 이미지를 시원하게 세로 나열 */}
+          {post.image_urls && post.image_urls.length > 0 && (
+            <div className="mb-6 space-y-4">
+              {post.image_urls.map((url, idx) => (
+                <div
+                  key={idx}
+                  className="relative w-full overflow-hidden rounded-xl bg-hover-bg"
+                >
+                  <Image
+                    src={url}
+                    alt={`첨부 이미지 ${idx + 1}`}
+                    width={800}
+                    height={600}
+                    sizes="(max-width: 768px) 100vw, 768px"
+                    className="w-full h-auto object-contain rounded-xl"
+                    loading={idx === 0 ? "eager" : "lazy"}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ─── 본문 텍스트 (이미지 아래) ─── */}
+          {/* image_urls가 있으면 content 내 외부 <img> 태그 제거 (핫링크 차단 대응) */}
           <div
-            className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-3"
+            className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap [&_img]:w-full [&_img]:h-auto [&_img]:rounded-xl [&_img]:my-4"
             dangerouslySetInnerHTML={{
               __html: post.image_urls && post.image_urls.length > 0
                 ? post.content.replace(/<img\s[^>]*\/?>/gi, "")
                 : post.content,
             }}
           />
-
-          {/* ─── 첨부 이미지 갤러리 (Next.js Image, fill + object-contain) ─── */}
-          {/* image_urls가 있으면 항상 표시 (content의 외부 img는 위에서 제거됨) */}
-          {post.image_urls && post.image_urls.length > 0 && (
-            <div className="mb-5 space-y-3">
-              {post.image_urls.map((url, idx) => (
-                <div
-                  key={idx}
-                  className="relative w-full overflow-hidden rounded-lg bg-hover-bg"
-                  style={{ maxHeight: "500px", aspectRatio: "16/9" }}
-                >
-                  <Image
-                    src={url}
-                    alt={`첨부 이미지 ${idx + 1}`}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 768px"
-                    className="object-contain"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* 하단 인터랙션 바 (레딧 스타일 필 버튼) */}
           <div className="flex items-center gap-2 border-t border-border-color pt-3">
