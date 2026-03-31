@@ -313,6 +313,9 @@ export default function PostDetailClient() {
     setDeleting(true);
 
     try {
+      // scraped_sources FK 참조 해제 (result_post_id → null)
+      await supabase.from("scraped_sources").update({ result_post_id: null }).eq("result_post_id", postId);
+
       // 게시글에 달린 댓글 먼저 삭제 (FK 제약조건 방지)
       await supabase.from("comments").delete().eq("post_id", postId);
 

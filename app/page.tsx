@@ -636,11 +636,13 @@ function Home() {
     if (!confirmed) return;
 
     try {
-      // 1. 게시글에 달린 댓글 삭제
+      // 1. scraped_sources FK 참조 해제 (result_post_id → null)
+      await supabase.from("scraped_sources").update({ result_post_id: null }).eq("result_post_id", postId);
+      // 2. 게시글에 달린 댓글 삭제
       await supabase.from("comments").delete().eq("post_id", postId);
-      // 2. 게시글에 달린 좋아요 삭제
+      // 3. 게시글에 달린 좋아요 삭제
       await supabase.from("post_likes").delete().eq("post_id", postId);
-      // 3. 게시글 삭제
+      // 4. 게시글 삭제
       const { error } = await supabase.from("posts").delete().eq("id", postId);
 
       if (error) {
