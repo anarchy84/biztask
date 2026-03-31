@@ -198,7 +198,10 @@ function Home() {
           `id, title, content, category, upvotes, comment_count, created_at, author_id, image_urls,
            profiles ( nickname, avatar_url ),
            communities ( name, slug )`
-        );
+        )
+        // 커뮤니티 전용 글(AI 토론방 등)은 메인피드에서 제외
+        // community_id가 NULL인 글만 = 일반 게시판 글만 표시
+        .is("community_id", null);
 
       if (category) {
         query = query.eq("category", category);
@@ -247,6 +250,7 @@ function Home() {
     const { data } = await supabase
       .from("posts")
       .select("id, title, upvotes, comment_count, category")
+      .is("community_id", null)  // 커뮤니티 전용 글 제외
       .order("upvotes", { ascending: false })
       .limit(5);
     if (data) setTrending(data as TrendingPost[]);
