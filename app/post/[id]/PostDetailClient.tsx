@@ -755,7 +755,7 @@ export default function PostDetailClient() {
           {/* ─── 본문 텍스트 (이미지 아래) ─── */}
           {/* image_urls가 있으면 content 내 외부 <img> 태그 제거 (핫링크 차단 대응) */}
           <div
-            className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap [&_img]:w-full [&_img]:h-auto [&_img]:rounded-xl [&_img]:my-4"
+            className="mb-5 text-[15px] leading-7 text-foreground whitespace-pre-wrap [&_img]:w-full [&_img]:h-auto [&_img]:rounded-xl [&_img]:my-4"
             dangerouslySetInnerHTML={{
               __html: post.image_urls && post.image_urls.length > 0
                 ? post.content.replace(/<img\s[^>]*\/?>/gi, "")
