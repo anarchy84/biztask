@@ -1,8 +1,16 @@
 {
   "crons": [
     {
+      "path": "/api/admin/scraper-cron",
+      "schedule": "0 */1 * * *"
+    },
+    {
+      "path": "/api/admin/npc-cron",
+      "schedule": "0 */2 * * *"
+    },
+    {
       "path": "/api/admin/test-interaction",
-      "schedule": "0 0 * * *"
+      "schedule": "0 */3 * * *"
     }
   ]
 }
