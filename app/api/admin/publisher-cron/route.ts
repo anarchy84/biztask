@@ -459,24 +459,42 @@ ${ragBlock}
     const anthropicKey = process.env.ANTHROPIC_API_KEY || "";
     const openaiKey = process.env.OPENAI_API_KEY || "";
 
+    console.log(`[Publisher/댓글] API 키 상태 — Gemini: ${geminiKey.length}자, Anthropic: ${anthropicKey.length}자, OpenAI: ${openaiKey.length}자`);
+
     // 🥇 Gemini
     if (geminiKey.length > 10) {
+      console.log("[Publisher/댓글] Gemini 시도 중...");
       const result = await generateWithGemini(geminiKey, systemPrompt, userPrompt);
-      if (result) return result;
+      if (result) {
+        console.log(`[Publisher/댓글] ✅ Gemini 성공 (${result.length}자)`);
+        return result;
+      }
+      console.log("[Publisher/댓글] ❌ Gemini 실패 → 다음 프로바이더");
     }
 
     // 🥈 Anthropic
     if (anthropicKey.length > 10) {
+      console.log("[Publisher/댓글] Anthropic 시도 중...");
       const result = await generateWithAnthropic(anthropicKey, systemPrompt, userPrompt);
-      if (result) return result;
+      if (result) {
+        console.log(`[Publisher/댓글] ✅ Anthropic 성공 (${result.length}자)`);
+        return result;
+      }
+      console.log("[Publisher/댓글] ❌ Anthropic 실패 → 다음 프로바이더");
     }
 
     // 🥉 OpenAI
     if (openaiKey.length > 10) {
+      console.log("[Publisher/댓글] OpenAI 시도 중...");
       const result = await generateWithOpenAI(openaiKey, systemPrompt, userPrompt);
-      if (result) return result;
+      if (result) {
+        console.log(`[Publisher/댓글] ✅ OpenAI 성공 (${result.length}자)`);
+        return result;
+      }
+      console.log("[Publisher/댓글] ❌ OpenAI 실패");
     }
 
+    console.log("[Publisher/댓글] 모든 AI 프로바이더 실패 — null 반환");
     return null;
   } catch (err) {
     console.error(
