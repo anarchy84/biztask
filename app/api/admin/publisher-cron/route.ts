@@ -349,7 +349,7 @@ async function runPublishJob(): Promise<PublishSummary> {
         .from("comments")
         .insert({
           post_id: newPost.id,
-          author_id: authorId,
+          user_id: authorId,
           content: expertCommentText,
         })
         .select("id")
