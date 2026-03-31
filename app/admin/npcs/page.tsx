@@ -151,10 +151,10 @@ export default function NPCsAdminPage() {
 
       // keywords가 문자열이면 배열로 변환
       if (typeof updatedConfig.keywords === "string") {
-        updatedConfig.keywords = updatedConfig.keywords
+        updatedConfig.keywords = (updatedConfig.keywords as string)
           .split(",")
-          .map((k) => k.trim())
-          .filter((k) => k);
+          .map((k: string) => k.trim())
+          .filter((k: string) => k);
       }
 
       const { error } = await supabase
