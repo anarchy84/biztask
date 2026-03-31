@@ -101,37 +101,64 @@ export class HtmlScraper implements Scraper {
       .trim();
   }
 
-  // ─── 이미지 URL 추출 (Lazy Loading 대응) ───
+  // ─── 이미지 URL 추출 (Lazy Loading 대응 + 강화 필터링) ───
   // 커뮤니티 글은 이미지가 생명! src뿐 아니라 data-src, data-original도 체크
+  // ※ 2026-03-31 강화: base64 더미, lazy placeholder, 상대경로 엄격 필터링
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private extractImageUrl(imgEl: any, $: any): string | null {
     const el = $(imgEl);
 
     // Lazy Loading 속성 우선순위로 체크
-    const src =
+    // ※ src가 placeholder(blank.gif 등)일 수 있으므로 data-* 속성을 먼저 확인
+    const dataSrc =
       el.attr("data-original") ||     // 디시인사이드 등
       el.attr("data-src") ||           // 범용 lazy loading
       el.attr("data-lazy-src") ||      // 일부 사이트
-      el.attr("src") ||                // 기본 src
       "";
+    const rawSrc = el.attr("src") || "";
 
-    if (!src) return null;
+    // data-* 속성에 유효한 URL이 있으면 우선 사용, 없으면 src
+    const src = (dataSrc && !dataSrc.startsWith("data:")) ? dataSrc : rawSrc;
 
-    // data:image (placeholder) 제거
+    if (!src || !src.trim()) return null;
+
+    // ─── 무효 URL 완전 차단 ───
+    // 1) Base64 더미 이미지 (data:image/gif;base64,... 등)
     if (src.startsWith("data:")) return null;
 
-    // 상대경로 → 절대경로 변환
-    if (src.startsWith("//")) {
-      return `https:${src}`;
+    // 2) Lazy-loading placeholder 파일 (blank.gif, placeholder.png 등)
+    const placeholderPatterns = /\b(blank|placeholder|spacer|loading|lazy|pixel|transparent|empty|no[-_]?image)\b/i;
+    if (placeholderPatterns.test(src)) return null;
+
+    // 3) 1x1 추적 픽셀
+    if (/[?&](w|width|h|height)=1\b/i.test(src) || /\/1x1\b/i.test(src)) return null;
+
+    // ─── URL 정규화 ───
+    let normalizedUrl = src.trim();
+
+    // 프로토콜 상대경로 → https
+    if (normalizedUrl.startsWith("//")) {
+      normalizedUrl = `https:${normalizedUrl}`;
     }
-    if (src.startsWith("/")) {
-      return `${this.config.baseUrl}${src}`;
+    // 절대경로 → baseUrl 붙이기
+    else if (normalizedUrl.startsWith("/")) {
+      normalizedUrl = `${this.config.baseUrl}${normalizedUrl}`;
     }
-    if (!src.startsWith("http")) {
-      return `${this.config.baseUrl}/${src}`;
+    // 상대경로 (http로 시작하지 않는 경우)
+    else if (!normalizedUrl.startsWith("http")) {
+      // 확장자가 이미지가 아니면 무시 (JS, CSS 등 잘못 파싱 방지)
+      if (!/\.(jpg|jpeg|png|gif|webp|avif|svg|bmp)/i.test(normalizedUrl)) {
+        return null;
+      }
+      normalizedUrl = `${this.config.baseUrl}/${normalizedUrl}`;
     }
 
-    return src;
+    // ─── 최종 검증: http/https URL만 허용 ───
+    if (!normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+      return null;
+    }
+
+    return normalizedUrl;
   }
 
   // ─── HTTP 요청 유틸 (Anti-Bot 헤더 + Jitter + EUC-KR 인코딩 지원) ───
@@ -353,21 +380,43 @@ export class HtmlScraper implements Scraper {
       // 본문 텍스트 추출
       let bodyText = this.stripHtml($body.html() || "");
 
-      // ─── 이미지 추출 (본문 길이 체크보다 먼저 실행) ───
+      // ─── 이미지 추출 (강화 필터링 + Set 기반 중복 제거) ───
       // 유머 카테고리는 이미지만 있는 글이 많으므로 이미지 먼저 확인
+      // ※ 2026-03-31: Set으로 정확한 중복 제거 + 썸네일/본문 중복 차단
+      const imageSet = new Set<string>();  // URL 중복 제거용 Set
       const images: string[] = [];
       $(selectors.contentImages).each((_i, imgEl) => {
         if (images.length >= 10) return false; // 최대 10장
 
         const imgUrl = this.extractImageUrl(imgEl, $);
-        if (imgUrl && !images.includes(imgUrl)) {
-          // 아이콘, 이모티콘 등 작은 이미지 필터 (URL 패턴으로)
-          const isSmallIcon =
-            /icon|emoji|emoticon|btn_|bullet|logo.*small/i.test(imgUrl);
-          if (!isSmallIcon) {
-            images.push(imgUrl);
-          }
+        if (!imgUrl) return; // 무효 URL은 extractImageUrl에서 이미 필터됨
+
+        // Set으로 정확한 중복 제거 (쿼리 파라미터 제거 후 비교)
+        // 같은 이미지가 ?w=100 vs ?w=800 등으로 중복 수집되는 것 방지
+        let dedupeKey = imgUrl;
+        try {
+          const urlObj = new URL(imgUrl);
+          // 리사이즈 파라미터 제거 후 기본 URL로 비교
+          urlObj.searchParams.delete("w");
+          urlObj.searchParams.delete("h");
+          urlObj.searchParams.delete("width");
+          urlObj.searchParams.delete("height");
+          urlObj.searchParams.delete("resize");
+          urlObj.searchParams.delete("type");
+          dedupeKey = urlObj.toString();
+        } catch {
+          // URL 파싱 실패 시 원본 그대로 비교
         }
+
+        if (imageSet.has(dedupeKey)) return; // 중복 스킵
+
+        // 아이콘, 이모티콘, 광고 배너, 트래킹 이미지 필터 (URL 패턴으로)
+        const isJunkImage =
+          /icon|emoji|emoticon|btn_|bullet|logo.*small|ad[-_]?banner|tracking|beacon/i.test(imgUrl);
+        if (isJunkImage) return;
+
+        imageSet.add(dedupeKey);
+        images.push(imgUrl);
       });
 
       // 너무 짧으면 스킵 (단, 이미지가 있으면 이미지 위주 글로 간주하여 허용)
