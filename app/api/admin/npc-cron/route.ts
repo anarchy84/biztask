@@ -79,12 +79,9 @@ const CATEGORY_INDUSTRY_MAP: Record<string, string[]> = {
   "자유": [],   // 자유 카테고리는 매핑 보너스 없음 (누구나 가능)
 };
 
-// 템플릿 댓글 — 극초단(1~4자)이거나, 구체적 반응이거나. 중간의 애매한 거 금지.
-const TEMPLATE_COMMENTS = [
-  "ㅋㅋㅋ", "ㅋㅋㅋㅋㅋ", "ㄹㅇ", "ㅇㅈ", "헐",
-  "대박", "와", "ㅎㅎ", "ㅇㅇ", "ㄱㅇㄷ",
-  "나만 그런줄", "아 진짜?", "미쳤다", "ㅋㅋ 맞아", "이건 인정",
-];
+// ※ 템플릿 댓글 완전 폐지 (2026-03-31)
+// 모든 댓글은 AI가 글 내용을 읽고 생성함
+// 원본 커뮤니티 댓글(source_comments)을 RAG로 참고하여 분위기 흡수
 
 const PERSONA_SPEECH_GUIDE: Record<string, string> = {
   "현직대기업": `[말투 강제] 블라인드체. 살짝 시크하지만 기본적으로 예의 있음. 종결어미: "~인듯", "~아닌가", "ㅇㅇ", "ㄹㅇ". 자영업자한테 은근 리스펙.`,
@@ -572,62 +569,95 @@ async function executeNpcCron(
 
       const relevance = calculateRelevanceScore(persona, targetPost.title, postContent, targetPost.category);
 
-      // 관심도 20점 미만이면 간단한 반응만
-      if (relevance < 20) {
-        // 간단한 반응 (템플릿)
-        const shortComment = pickRandom(TEMPLATE_COMMENTS);
-        const { error } = await supabase
-          .from("comments")
-          .insert({ post_id: targetPost.id, user_id: persona.user_id, content: shortComment });
+      // ─── [핵심 원칙] 템플릿 댓글 완전 금지 ───
+      // 모든 댓글은 AI가 글 내용을 읽고 생성해야 함
+      // 관심도 낮으면 스킵 (무의미한 댓글보다 안 다는 게 나음)
+      if (relevance < 10) {
+        summary.skipped++;
+        summary.details?.push({
+          action: "comment",
+          persona: persona.nickname,
+          success: true,
+          detail: `"${targetPost.title.slice(0, 20)}..." 관심도${relevance}점 → 스킵`,
+          relevance,
+        });
+        continue;
+      }
 
-        if (!error) {
-          const { data: cp } = await supabase.from("posts").select("comment_count").eq("id", targetPost.id).single();
-          await supabase
-            .from("posts")
-            .update({ comment_count: (cp?.comment_count ?? 0) + 1 })
-            .eq("id", targetPost.id);
+      // ─── 스크래핑된 글이면 원본 댓글을 RAG로 활용 ───
+      // content_backlog에서 원본 댓글(source_comments)을 가져와서
+      // AI가 실제 커뮤니티 반응의 분위기/수준을 참고하게 함
+      let sourceCommentsRAG = "";
+      const { data: backlogData } = await supabase
+        .from("content_backlog")
+        .select("source_comments")
+        .eq("result_post_id", targetPost.id)
+        .maybeSingle();
 
-          await supabase
-            .from("personas")
-            .update({
-              today_comments: todayComments + 1,
-              total_comments: (persona.total_comments ?? 0) + 1,
-              last_active_at: now.toISOString(),
-            })
-            .eq("id", persona.id);
+      if (backlogData?.source_comments && backlogData.source_comments.length > 0) {
+        const comments = backlogData.source_comments as string[];
+        const sample = comments.slice(0, 5);
+        sourceCommentsRAG =
+          `\n[📋 원본 커뮤니티에 달렸던 실제 댓글들 — 이 분위기를 참고해서 네 스타일로 반응해]\n` +
+          sample.map((c: string, i: number) => `${i + 1}. "${c}"`).join("\n") +
+          `\n→ 위 댓글들을 베끼지 말고, 분위기와 수준만 참고해서 네 관점으로 새롭게 달아.\n`;
+      }
 
-          summary.executed++;
-          summary.comments++;
-          summary.details?.push({
-            action: "comment",
-            persona: persona.nickname,
-            success: true,
-            detail: `"${targetPost.title.slice(0, 20)}..." (관심도${relevance}점)`,
-            relevance,
-          });
-        } else {
-          summary.errors++;
-          summary.details?.push({
-            action: "comment",
-            persona: persona.nickname,
-            success: false,
-            detail: `댓글 저장 실패`,
-            error: error.message,
-          });
-        }
-      } else {
-        // AI 댓글
-        const systemPrompt = buildDynamicSystemPrompt(persona, relevance);
-        const aiResult = await generateWithAI(
-          apiKey,
-          systemPrompt,
+      // ─── AI 댓글 생성 (카테고리별 프롬프트 분기) ───
+      const isSerious = ["질문", "사업", "마케팅", "부업"].includes(targetPost.category);
+      const systemPrompt = buildDynamicSystemPrompt(persona, relevance);
+
+      let commentPrompt: string;
+      if (targetPost.category === "질문") {
+        // 질문글: 경험 기반 답변 유도
+        commentPrompt =
+          `이 질문에 네 경험/관점으로 답변해.\n\n` +
+          `제목: ${targetPost.title}\n` +
+          `본문: ${postContent.slice(0, 500)}\n` +
+          `${sourceCommentsRAG}\n` +
+          `- 질문의 핵심에 대한 실전 답변. "나는 이렇게 했는데~" 식으로\n` +
+          `- 모르는 분야면 "SKIP" 출력\n` +
+          `- ${relevance >= 80 ? "60~200자. 아는 분야니까 구체적 경험담 포함" : "30~100자. 짧지만 핵심은 있게. 모르면 솔직히 '나도 궁금' 정도"}\n` +
+          `- "안녕하세요" 인사치레 금지. 바로 본론\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      } else if (isSerious) {
+        // 사업/마케팅/부업: 공감+경험 유도
+        commentPrompt =
           `이 글에 댓글 달아.\n\n` +
           `제목: ${targetPost.title}\n` +
-          `본문: ${postContent.slice(0, 300)}\n\n` +
-          `- 글 읽고 느낀 점 한마디. 할 말 없으면 "SKIP"\n` +
-          `- ${relevance >= 80 ? "40~120자. 아는 분야니까 구체적으로. 근데 강의체 금지" : "10~50자. 짧게. 글 내용에 대한 구체적 한마디 or 위로/공감. 'ㅋㅋ 이거 뭐야' 같은 무의미 반응 금지"}\n` +
-          `- 댓글만 출력. 설명 붙이지 마`
-        );
+          `본문: ${postContent.slice(0, 400)}\n` +
+          `${sourceCommentsRAG}\n` +
+          `- 글 내용에 대한 구체적 반응. 글의 핵심 포인트를 짚어서\n` +
+          `- 할 말 없으면 "SKIP"\n` +
+          `- ${relevance >= 80 ? "40~150자. 경험 기반 구체적 의견" : "20~80자. 공감이나 의견 한마디"}\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      } else if (targetPost.category === "유머") {
+        // 유머: 재밌는 반응, 원본 댓글 분위기 참고
+        commentPrompt =
+          `이 유머글에 댓글 달아.\n\n` +
+          `제목: ${targetPost.title}\n` +
+          `본문: ${postContent.slice(0, 400)}\n` +
+          `${sourceCommentsRAG}\n` +
+          `- 글 내용에 맞는 재밌는 반응. 글의 포인트를 짚어서 웃기게\n` +
+          `- "ㅋㅋㅋ"만 치는 건 금지. 뭐가 웃긴지 구체적으로\n` +
+          `- 할 말 없으면 "SKIP"\n` +
+          `- ${relevance >= 50 ? "20~80자. 센스있게" : "10~40자. 짧게 한마디"}\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      } else {
+        // 자유: 글 내용에 맞는 자연스러운 반응
+        commentPrompt =
+          `이 글에 댓글 달아.\n\n` +
+          `제목: ${targetPost.title}\n` +
+          `본문: ${postContent.slice(0, 400)}\n` +
+          `${sourceCommentsRAG}\n` +
+          `- 글 읽고 느낀 점이나 경험 한마디. 글 내용에 대해 구체적으로 반응\n` +
+          `- "ㅋㅋ" "ㄹㅇ" "ㅇㅈ" 같은 무의미 1~2글자 반응 금지\n` +
+          `- 할 말 없으면 "SKIP"\n` +
+          `- ${relevance >= 50 ? "20~100자. 자연스럽게" : "10~50자. 짧게 한마디"}\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      }
+
+      const aiResult = await generateWithAI(apiKey, systemPrompt, commentPrompt);
 
         if (aiResult.text) {
           const trimmed = aiResult.text.trim();
