@@ -729,17 +729,21 @@ export default function PostDetailClient() {
             {post.title}
           </h1>
 
-          {/* 본문 (HTML 렌더링 지원 — 스크래퍼가 삽입한 <img> 태그 등을 실제로 표시) */}
+          {/* 본문 (HTML 렌더링 지원) */}
+          {/* ⚠️ image_urls가 있으면 content 내 외부 <img> 태그 제거 (핫링크 차단 대응) */}
+          {/* Supabase에 업로드된 이미지는 아래 갤러리에서 정상 표시 */}
           <div
             className="mb-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded-lg [&_img]:my-3"
-            dangerouslySetInnerHTML={{ __html: post.content }}
+            dangerouslySetInnerHTML={{
+              __html: post.image_urls && post.image_urls.length > 0
+                ? post.content.replace(/<img\s[^>]*\/?>/gi, "")
+                : post.content,
+            }}
           />
 
           {/* ─── 첨부 이미지 갤러리 (Next.js Image, fill + object-contain) ─── */}
-          {/* 각 이미지를 w-full max-w-3xl로 꽉 채우되, 원본 비율 유지 */}
-          {/* ⚠️ 본문(content)에 이미 <img> 태그가 있으면 갤러리 숨김 (스크래퍼 글 중복 방지) */}
-          {/* 유저 직접 작성글은 content에 img 없고 image_urls만 있으므로 정상 표시 */}
-          {post.image_urls && post.image_urls.length > 0 && !/<img\s/i.test(post.content) && (
+          {/* image_urls가 있으면 항상 표시 (content의 외부 img는 위에서 제거됨) */}
+          {post.image_urls && post.image_urls.length > 0 && (
             <div className="mb-5 space-y-3">
               {post.image_urls.map((url, idx) => (
                 <div
