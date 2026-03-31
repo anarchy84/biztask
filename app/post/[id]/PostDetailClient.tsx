@@ -727,7 +727,9 @@ export default function PostDetailClient() {
 
           {/* ─── 첨부 이미지 갤러리 (Next.js Image, fill + object-contain) ─── */}
           {/* 각 이미지를 w-full max-w-3xl로 꽉 채우되, 원본 비율 유지 */}
-          {post.image_urls && post.image_urls.length > 0 && (
+          {/* ⚠️ 본문(content)에 이미 <img> 태그가 있으면 갤러리 숨김 (스크래퍼 글 중복 방지) */}
+          {/* 유저 직접 작성글은 content에 img 없고 image_urls만 있으므로 정상 표시 */}
+          {post.image_urls && post.image_urls.length > 0 && !/<img\s/i.test(post.content) && (
             <div className="mb-5 space-y-3">
               {post.image_urls.map((url, idx) => (
                 <div

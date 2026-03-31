@@ -247,7 +247,10 @@ export default function PostCard({
         {/* ─── 레딧 스타일 이미지 슬라이더 ─── */}
         {/* 고정 비율 컨테이너 (4:3) + 블러 배경 + 센터 이미지 */}
         {/* 여러 장일 때: 좌우 화살표 + 하단 도트 인디케이터 */}
-        <ImageSlider imageUrls={imageUrls} />
+        {/* ⚠️ 본문에 이미 <img> 태그가 있으면 슬라이더 숨김 (스크래퍼 글 이미지 중복 방지) */}
+        {!/<img\s/i.test(content || "") && (
+          <ImageSlider imageUrls={imageUrls} />
+        )}
       </div>
 
       {/* 하단: 레딧 스타일 인터랙션 바 */}
