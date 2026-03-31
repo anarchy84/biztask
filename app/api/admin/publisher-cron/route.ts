@@ -269,14 +269,29 @@ async function runPublishJob(): Promise<PublishSummary> {
         `[Publisher] 이미지 업로드: ${uploadedImageUrls.length}개 성공, ${imageResult.failed}개 실패`
       );
 
-      // 업로드 성공한 이미지로 본문 내 이미지 URL 교체
-      if (uploadedImageUrls.length > 0 && hasImages) {
-        // 원본 이미지 URL을 업로드된 URL로 교체
-        for (let i = 0; i < Math.min(articleForRewriter.sourceImages.length, uploadedImageUrls.length); i++) {
-          finalBody = finalBody.replace(
-            articleForRewriter.sourceImages[i],
-            uploadedImageUrls[i]
-          );
+      // ─── 매핑 기반 URL 교체 (인덱스 어긋남 버그 수정) ───
+      // urlMap: 원본URL → 업로드URL 정확한 1:1 매핑
+      // 필터링/실패된 이미지가 있어도 정확하게 교체됨
+      if (imageResult.urlMap && imageResult.urlMap.size > 0 && hasImages) {
+        for (const [originalUrl, uploadedUrl] of imageResult.urlMap) {
+          // 본문 내 모든 등장을 교체 (같은 이미지가 여러 번 나올 수 있음)
+          while (finalBody.includes(originalUrl)) {
+            finalBody = finalBody.replace(originalUrl, uploadedUrl);
+          }
+        }
+
+        // 업로드 실패한 이미지의 <img> 태그 제거 (깨진 이미지 방지)
+        // 매핑에 없는 원본 URL = 다운로드/업로드 실패 또는 필터링된 이미지
+        for (const srcUrl of articleForRewriter.sourceImages) {
+          if (!imageResult.urlMap.has(srcUrl) && finalBody.includes(srcUrl)) {
+            // 해당 <img> 태그 전체를 제거
+            const imgTagRegex = new RegExp(
+              `<img[^>]*src=["']${srcUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'][^>]*\\/?>`,
+              'g'
+            );
+            finalBody = finalBody.replace(imgTagRegex, '');
+            console.log(`[Publisher] 실패한 이미지 태그 제거: ${srcUrl.substring(0, 60)}`);
+          }
         }
       }
     } catch (imgErr) {

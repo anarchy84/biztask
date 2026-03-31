@@ -19,6 +19,9 @@ interface ImageUploadResult {
   uploaded: string[];     // 성공한 공개 URL 목록
   failed: number;         // 실패 건수
   skipped: number;        // 스킵 건수 (너무 작은 이미지 등)
+  // 원본URL → 업로드URL 매핑 (인덱스 어긋남 방지용)
+  // ※ publisher-cron에서 본문 내 URL 교체 시 반드시 이 맵을 사용해야 함
+  urlMap: Map<string, string>;
 }
 
 // ─── 설정 상수 ───
@@ -124,6 +127,7 @@ export async function downloadAndUploadImages(
     uploaded: [],
     failed: 0,
     skipped: 0,
+    urlMap: new Map(),  // 원본URL → 업로드URL 정확한 매핑
   };
 
   // 이미지가 없으면 바로 반환
@@ -225,6 +229,9 @@ export async function downloadAndUploadImages(
 
       if (urlData?.publicUrl) {
         result.uploaded.push(urlData.publicUrl);
+        // 원본 URL → 업로드된 URL 매핑 저장
+        // ※ 이 맵이 있어야 publisher-cron에서 정확한 URL 교체 가능
+        result.urlMap.set(imageUrl, urlData.publicUrl);
         console.log(
           `[ImageUploader] ✅ 업로드 성공 [${i + 1}/${validImages.length}]: ${(buffer.length / 1024).toFixed(0)}KB → ${filePath}`
         );

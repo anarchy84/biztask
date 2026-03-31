@@ -114,6 +114,24 @@ async function runHarvestJob(fromCron: boolean = false): Promise<{
     `[Harvester] 수집 시작 (${currentDate} KST ${kstHour}시, fromCron: ${fromCron})`
   );
 
+  // ─── 글밥(미발행 콘텐츠) 잔여 체크 ───
+  // 창고에 미발행 글이 남아있으면 굳이 새로 수집하지 않음 (자원 절약)
+  const supabase = createAdminSupabaseClient();
+  const { count: unpublishedCount } = await supabase
+    .from("content_backlog")
+    .select("id", { count: "exact", head: true })
+    .eq("is_published", false);
+
+  if (unpublishedCount && unpublishedCount > 0) {
+    console.log(
+      `[Harvester] 🛑 창고에 미발행 글 ${unpublishedCount}개 남아있음 → 수집 스킵`
+    );
+    return {
+      summary: null,
+      message: `창고에 미발행 글 ${unpublishedCount}개 남아있어 수집 불필요`,
+    };
+  }
+
   // ─── 스크래퍼 등록 확인 ───
   ensureScrapersRegistered();
 
@@ -138,7 +156,7 @@ async function runHarvestJob(fromCron: boolean = false): Promise<{
     errors: [],
   };
 
-  const supabase = createAdminSupabaseClient();
+  // (supabase는 위 글밥 잔여 체크에서 이미 생성됨)
 
   // ================================================================
   // STEP 1: 글 목록 가져오기
