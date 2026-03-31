@@ -40,14 +40,58 @@ export function getAllScrapers(): Scraper[] {
   return all;
 }
 
-// ─── 랜덤 스크래퍼 1개 선택 (Hit & Run용) ───
-// 크론 실행할 때마다 랜덤으로 1개 스크래퍼만 골라서 실행
-// → 부하 분산 + Vercel 타임아웃 방어
+// ─── 가중치 랜덤 스크래퍼 선택 (Project DNA 비율 적용) ───
+// 크론 실행할 때마다 이 비율에 따라 1개 스크래퍼를 골라서 실행
+// ── 소스 맵 (2026-03-31 Phase 1 기준) ──
+// humor(40%): 보배드림, 디시실베, 개드립, 더쿠, 웃긴대학 ← 신규 3개 추가
+// car(10%): 클리앙 굴러간당, 뽐뿌 자동차포럼
+// qa(15%): 아이보스 질문답변
+// marketing(15%): 아이보스 정보공유
+// business(10%): (Hard Track — 아프니까사장이다, 자영업자쉼터 → 향후)
+// ai(10%): (향후)
+const CATEGORY_WEIGHTS: Record<string, number> = {
+  humor: 40,      // 유머 40% — 보배드림, 디시실베, 개드립, 더쿠, 웃긴대학
+  car: 10,        // 자동차 10% — 클리앙 굴러간당, 뽐뿌 자동차포럼
+  qa: 15,         // Q&A 15% — 아이보스 질문답변
+  marketing: 15,  // 마케팅 15% — 아이보스 정보공유
+  business: 10,   // 사업 10% — (Hard Track 향후 추가)
+  ai: 10,         // AI 10% — (향후 추가)
+};
+
 export function pickRandomScraper(): Scraper | null {
   const all = getAllScrapers();
   if (all.length === 0) return null;
-  const index = Math.floor(Math.random() * all.length);
-  return all[index];
+
+  // 카테고리별 스크래퍼를 그룹화
+  const categoryGroups: Map<string, Scraper[]> = new Map();
+  for (const s of all) {
+    const group = categoryGroups.get(s.category) || [];
+    group.push(s);
+    categoryGroups.set(s.category, group);
+  }
+
+  // 가중치 기반 카테고리 선택
+  const entries = Array.from(categoryGroups.keys());
+  const weights = entries.map((cat) => CATEGORY_WEIGHTS[cat] || 5);
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let rand = Math.random() * totalWeight;
+
+  let selectedCategory = entries[0];
+  for (let i = 0; i < entries.length; i++) {
+    rand -= weights[i];
+    if (rand <= 0) {
+      selectedCategory = entries[i];
+      break;
+    }
+  }
+
+  // 선택된 카테고리 내에서 랜덤 스크래퍼 1개
+  const scrapers = categoryGroups.get(selectedCategory) || all;
+  const index = Math.floor(Math.random() * scrapers.length);
+  console.log(
+    `[ScraperRegistry] 카테고리 "${selectedCategory}" 선택 (가중치 기반) → ${scrapers[index].name}`
+  );
+  return scrapers[index];
 }
 
 // ─── 디버그용: 등록 현황 출력 ───

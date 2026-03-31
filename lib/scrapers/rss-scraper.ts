@@ -13,6 +13,7 @@ import type { Scraper, ScrapedArticle } from "./types";
 export interface RssFeedConfig {
   name: string;           // 스크래퍼 이름 (로그용)
   category: string;       // BizTask 카테고리 (예: "marketing")
+  contentType: "qa" | "news" | "humor";  // 콘텐츠 타입 (Project DNA: 조건부 렌더링)
   feedUrl: string;        // RSS 피드 URL
   sourceSite: string;     // 출처 사이트명
   maxItems?: number;      // 한 번에 가져올 최대 기사 수 (기본값: 5)
@@ -29,6 +30,7 @@ interface RssItemCache {
 export class RssScraper implements Scraper {
   name: string;
   category: string;
+  private contentType: "qa" | "news" | "humor";
   private feedUrl: string;
   private sourceSite: string;
   private maxItems: number;
@@ -40,6 +42,7 @@ export class RssScraper implements Scraper {
   constructor(config: RssFeedConfig) {
     this.name = config.name;
     this.category = config.category;
+    this.contentType = config.contentType;
     this.feedUrl = config.feedUrl;
     this.sourceSite = config.sourceSite;
     this.maxItems = config.maxItems || 5;
@@ -193,6 +196,7 @@ export class RssScraper implements Scraper {
         sourceComments: [],   // RSS 피드에는 댓글 구조 없음 (뉴스 기사)
         sourceSite: this.sourceSite,
         category: this.category,
+        contentType: this.contentType,
         scrapedAt: new Date().toISOString(),
       };
 
@@ -276,10 +280,15 @@ export class RssScraper implements Scraper {
 // → 직접 RSS를 제공하는 국내 언론사 피드 사용
 // 참고: https://github.com/akngs/knews-rss (한국 언론사 RSS 모음)
 export const RSS_FEED_CONFIGS: RssFeedConfig[] = [
+  // ════════════════════════════════════════════
+  // ▼ 뉴스 소스 (20% 비율) — 3줄 요약 + 시니컬 한줄평 ▼
+  // ════════════════════════════════════════════
+
   // ─── 마케팅/IT ───
   {
     name: "한국 테크 뉴스 (마케팅/IT)",
     category: "marketing",
+    contentType: "news",
     feedUrl: "https://akngs.github.io/knews-rss/categories/tech.xml",
     sourceSite: "한국 테크 뉴스",
     maxItems: 3,
@@ -288,24 +297,18 @@ export const RSS_FEED_CONFIGS: RssFeedConfig[] = [
   {
     name: "한국 경제 뉴스 (사업)",
     category: "business",
+    contentType: "news",
     feedUrl: "https://akngs.github.io/knews-rss/categories/economy.xml",
     sourceSite: "한국 경제 뉴스",
     maxItems: 3,
   },
-  // ─── 자동차 ───
-  // /content/rss/car = 승용차 전용 피드 (자동차 관련 기사만 수집)
-  // /content/rss/news = 전체 최신기사 (항공, 배터리 등 비자동차 기사 혼입)
-  {
-    name: "데일리카 (자동차)",
-    category: "car",
-    feedUrl: "https://www.dailycar.co.kr/content/rss/car",
-    sourceSite: "데일리카",
-    maxItems: 5,
-  },
+  // ─── 데일리카 삭제됨 ───
+  // 사유: Project DNA — 하드코어 비즈니스 커뮤니티 정체성에 자동차 뉴스 부적합
   // ─── AI/인공지능 ───
   {
     name: "구글 뉴스 (AI/인공지능)",
     category: "ai",
+    contentType: "news",
     feedUrl: "https://news.google.com/rss/search?q=%EC%9D%B8%EA%B3%B5%EC%A7%80%EB%8A%A5+AI&hl=ko&gl=KR&ceid=KR:ko",
     sourceSite: "구글뉴스",
     maxItems: 2,

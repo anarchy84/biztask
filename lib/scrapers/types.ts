@@ -13,6 +13,11 @@ export interface ScrapedArticle {
   sourceComments: string[]; // 원본 게시글의 실제 유저 댓글 (최대 5개, Few-Shot용)
   sourceSite: string;       // 출처 사이트명 (예: '아이보스')
   category: string;         // 카테고리 (예: 'marketing', 'tax')
+  // ─── 콘텐츠 타입 (Project DNA: 조건부 렌더링용) ───
+  // 'qa' = 질문글 → 원본 그대로 포스팅 + NPC 고수 댓글
+  // 'news' = 뉴스/정보글 → 3줄 요약 + 시니컬 한줄평
+  // 'humor' = 유머글 → 기존 음슴체 리라이팅
+  contentType: "qa" | "news" | "humor";
   scrapedAt: string;        // 수집 시각 (ISO 문자열)
 }
 

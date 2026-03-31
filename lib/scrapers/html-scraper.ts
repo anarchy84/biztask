@@ -13,6 +13,8 @@ import type { Scraper, ScrapedArticle } from "./types";
 export interface HtmlScraperConfig {
   name: string;           // 스크래퍼 이름 (로그용, 예: "보배드림 베스트")
   category: string;       // BizTask 카테고리 (예: "humor", "free")
+  // ─── 콘텐츠 타입 (Project DNA: 조건부 렌더링) ───
+  contentType: "qa" | "news" | "humor";
   sourceSite: string;     // 출처 사이트명 (예: "보배드림")
   listUrl: string;        // 글 목록 페이지 URL
   baseUrl: string;        // 상대경로 → 절대경로 변환용 (예: "https://www.bobaedream.co.kr")
@@ -130,7 +132,8 @@ export class HtmlScraper implements Scraper {
     return src;
   }
 
-  // ─── HTTP 요청 유틸 (타임아웃 + 에러 처리) ───
+  // ─── HTTP 요청 유틸 (타임아웃 + 에러 처리 + EUC-KR 인코딩 지원) ───
+  // 웃긴대학 등 일부 사이트는 EUC-KR 인코딩을 사용하므로 디코딩 처리 필요
   private async fetchPage(url: string): Promise<string> {
     const response = await fetch(url, {
       headers: this.headers,
@@ -140,6 +143,13 @@ export class HtmlScraper implements Scraper {
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+
+    // EUC-KR 인코딩 사이트 처리 (예: 웃긴대학)
+    if (this.config.encoding === "euc-kr") {
+      const buffer = await response.arrayBuffer();
+      const decoder = new TextDecoder("euc-kr");
+      return decoder.decode(buffer);
     }
 
     return response.text();
@@ -329,6 +339,7 @@ export class HtmlScraper implements Scraper {
         sourceComments: comments,
         sourceSite: this.config.sourceSite,
         category: this.category,
+        contentType: this.config.contentType,
         scrapedAt: new Date().toISOString(),
       };
     } catch (err) {
@@ -349,26 +360,28 @@ export class HtmlScraper implements Scraper {
 // → 차단되면 해당 Config만 주석처리하면 됨 (다른 스크래퍼에 영향 없음)
 
 export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
+  // ════════════════════════════════════════════
+  // ▼ 유머 소스 (50% 비율) ▼
+  // ════════════════════════════════════════════
+
   // ────────────────────────────────────────────
   // 1. 보배드림 — 베스트 게시글
-  // URL: https://www.bobaedream.co.kr/list?code=best
-  // 특징: 비교적 관대한 봇 정책, 자동차 + 유머 혼합
   // ────────────────────────────────────────────
   {
     name: "보배드림 베스트",
     category: "humor",
+    contentType: "humor",
     sourceSite: "보배드림",
     listUrl: "https://www.bobaedream.co.kr/list?code=best",
     baseUrl: "https://www.bobaedream.co.kr",
     selectors: {
-      listItem: "#boardlist tbody tr",               // 글 목록 행 (#boardlist 테이블)
-      listLink: "a.bsubject",                        // 제목 링크
-      listTitle: "a.bsubject",                       // 제목 텍스트도 여기서
-      contentBody: ".bodyCont",                        // 상세 본문 영역 (보배드림 실제 클래스)
-      contentImages: ".bodyCont img",                // 본문 내 이미지
-      // ─── 댓글 (Few-Shot용) ───
-      commentItem: ".cmt_info",                      // 보배드림 댓글 개별 아이템
-      commentText: ".cmt_txt_cont",                  // 댓글 텍스트 영역
+      listItem: "#boardlist tbody tr",
+      listLink: "a.bsubject",
+      listTitle: "a.bsubject",
+      contentBody: ".bodyCont",
+      contentImages: ".bodyCont img",
+      commentItem: ".cmt_info",
+      commentText: ".cmt_txt_cont",
     },
     customHeaders: {
       Referer: "https://www.bobaedream.co.kr/",
@@ -377,41 +390,248 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
   },
 
   // ────────────────────────────────────────────
-  // [비활성화] 개드립넷 — 개드립 (유머)
-  // 사유: Rhymix 기반 CSR(Client Side Rendering)으로 본문 로딩
-  //       cheerio(서버사이드 HTML 파싱)로는 본문 추출 불가
-  //       article.rhymix_content 내부가 빈 상태로 렌더링됨
-  //       향후 Puppeteer 등 headless browser 도입 시 재활성화 가능
-  // ────────────────────────────────────────────
-
-  // ────────────────────────────────────────────
-  // 3. 디시인사이드 — 실시간베스트 (실베)
-  // URL: https://gall.dcinside.com/board/lists/?id=dcbest
-  // 특징: 봇 차단 매우 빡셈! Referer, Cookie 검사함
-  // → 헤더를 꼼꼼히 세팅해도 차단당할 수 있음 (그러면 쿨하게 버림)
+  // 2. 디시인사이드 — 실시간베스트 (실베)
   // ────────────────────────────────────────────
   {
     name: "디시 실베",
     category: "humor",
+    contentType: "humor",
     sourceSite: "디시인사이드",
     listUrl: "https://gall.dcinside.com/board/lists/?id=dcbest",
     baseUrl: "https://gall.dcinside.com",
     selectors: {
-      listItem: "tr.us-post",                        // 글 목록 행 (tr에 us-post 클래스)
-      listLink: "a:not(.reply_numbox)",              // 제목 링크 (댓글수 링크 제외)
-      listTitle: "a:not(.reply_numbox)",             // 제목 텍스트
-      contentBody: ".write_div",                     // 상세 본문 영역
-      contentImages: ".write_div img",               // 본문 이미지
-      // ─── 댓글 (Few-Shot용) ───
-      commentItem: ".reply_info",                    // 디시 댓글 개별 행
-      commentText: ".usertxt",                       // 댓글 텍스트
+      listItem: "tr.us-post",
+      listLink: "a:not(.reply_numbox)",
+      listTitle: "a:not(.reply_numbox)",
+      contentBody: ".write_div",
+      contentImages: ".write_div img",
+      commentItem: ".reply_info",
+      commentText: ".usertxt",
     },
     customHeaders: {
       Referer: "https://gall.dcinside.com/",
-      Cookie: "PHPSESSID=dummy; ci_c=0",   // 기본 쿠키 (없으면 403)
-      "X-Requested-With": "XMLHttpRequest", // 일부 요청에서 필요
+      Cookie: "PHPSESSID=dummy; ci_c=0",
+      "X-Requested-With": "XMLHttpRequest",
     },
-    maxItems: 3, // 디시는 보수적으로 (차단 위험)
+    maxItems: 3,
+  },
+
+  // ────────────────────────────────────────────
+  // 3. 개드립 — HOT 베스트
+  // URL: https://www.dogdrip.net/index.php?mid=hot
+  // 엔진: XpressEngine 기반. 깔끔한 시맨틱 DOM.
+  // 리스트: .vr_itemcard 안에 a.ed.title-link
+  // 본문: .xe_content
+  // 댓글: .ed.comment-item 안의 .ed.text-normal (R&D에서 11개 확인)
+  // ────────────────────────────────────────────
+  {
+    name: "개드립 HOT",
+    category: "humor",
+    contentType: "humor",
+    sourceSite: "개드립",
+    listUrl: "https://www.dogdrip.net/index.php?mid=hot",
+    baseUrl: "https://www.dogdrip.net",
+    selectors: {
+      listItem: ".vr_itemcard",                 // 게시물 카드 아이템
+      listLink: "a.ed.title-link",              // 제목 링크
+      listTitle: "a.ed.title-link",             // 제목 텍스트
+      contentBody: ".xe_content",               // 상세 페이지 본문
+      contentImages: ".xe_content img",          // 본문 이미지
+      commentItem: ".ed.comment-item",           // 댓글 아이템
+      commentText: ".ed.text-normal",            // 댓글 텍스트
+    },
+    customHeaders: {
+      Referer: "https://www.dogdrip.net/",
+    },
+    maxItems: 5,
+  },
+
+  // ────────────────────────────────────────────
+  // 4. 더쿠 — HOT 게시판
+  // URL: https://theqoo.net/hot
+  // 구조: .theqoo_board_table tbody tr → td.title a
+  // TD 클래스: no, cate, title, time, m_no
+  // 본문: .xe_content (XE 기반)
+  // 댓글: .comment_2_item 안의 댓글 텍스트
+  // 카테고리 구분 가능: 이슈, 유머, 정보 등
+  // ────────────────────────────────────────────
+  {
+    name: "더쿠 HOT",
+    category: "humor",
+    contentType: "humor",
+    sourceSite: "더쿠",
+    listUrl: "https://theqoo.net/hot",
+    baseUrl: "https://theqoo.net",
+    selectors: {
+      listItem: ".theqoo_board_table tbody tr",  // 테이블 행
+      listLink: "td.title a",                    // 제목 링크 (td.title 안의 a)
+      listTitle: "td.title a",                   // 제목 텍스트
+      contentBody: ".xe_content",                // 상세 페이지 본문 (XE 기반)
+      contentImages: ".xe_content img",           // 본문 이미지
+      commentItem: ".comment_2_item",             // 댓글 아이템
+      commentText: ".text",                       // 댓글 텍스트
+    },
+    customHeaders: {
+      Referer: "https://theqoo.net/",
+    },
+    maxItems: 5,
+  },
+
+  // ────────────────────────────────────────────
+  // 5. 웃긴대학 — 웃긴자료 (오늘의 베스트)
+  // URL: https://web.humoruniv.com/board/humor/list.html?table=pds&st=day
+  // 리스트: a[href*="read.html?table=pds"] (테이블 구조, 20+개)
+  // 개별글 URL: read.html?table=pds&st=day&pg=0&number={ID}
+  // 본문: #cnts (본문 콘텐츠 영역)
+  // 댓글: "댓글마당" 섹션 — .comment_div_2 안의 댓글 텍스트
+  //        댓글 베스트 3개 + 일반 댓글 구분됨 (39개 확인)
+  //        댓글 길이 길고 양질 → RAG Few-Shot용 최적
+  // 인코딩: EUC-KR (encoding 옵션 필요)
+  // ────────────────────────────────────────────
+  {
+    name: "웃긴대학 웃긴자료",
+    category: "humor",
+    contentType: "humor",
+    sourceSite: "웃긴대학",
+    listUrl: "https://web.humoruniv.com/board/humor/list.html?table=pds&st=day",
+    baseUrl: "https://web.humoruniv.com",
+    selectors: {
+      listItem: "table.list_table tr",                // 리스트 테이블 행
+      listLink: "a[href*='read.html?table=pds']",     // 제목 링크 (read.html 패턴)
+      listTitle: "a[href*='read.html?table=pds']",    // 제목 텍스트
+      contentBody: "#cnts",                            // 상세 페이지 본문
+      contentImages: "#cnts img",                      // 본문 이미지
+      commentItem: ".comment_div_2",                   // 댓글마당 개별 댓글
+      commentText: ".re_txt",                          // 댓글 텍스트 영역
+    },
+    customHeaders: {
+      Referer: "https://web.humoruniv.com/",
+    },
+    encoding: "euc-kr",  // 웃대는 EUC-KR 인코딩 사용
+    maxItems: 5,
+  },
+
+  // ════════════════════════════════════════════
+  // ▼ 자동차 소스 (car 카테고리) ▼
+  // 사장님들 자동차 좋아하시니까 필수 카테고리
+  // ════════════════════════════════════════════
+
+  // ────────────────────────────────────────────
+  // 6. 클리앙 — 굴러간당 (자동차 게시판)
+  // URL: https://www.clien.net/service/board/cm_car
+  // 구조: div.list_item.symph_row → a.list_subject
+  // 본문: div.post_article / 댓글: .comment_row → .comment_content
+  // ────────────────────────────────────────────
+  {
+    name: "클리앙 굴러간당",
+    category: "car",
+    contentType: "humor",
+    sourceSite: "클리앙",
+    listUrl: "https://www.clien.net/service/board/cm_car",
+    baseUrl: "https://www.clien.net",
+    selectors: {
+      listItem: "div.list_item.symph_row",    // 일반 글 (공지/홍보 제외)
+      listLink: "a.list_subject",              // 제목 링크
+      listTitle: "a.list_subject",             // 제목 텍스트
+      contentBody: ".post_article",            // 상세 페이지 본문
+      contentImages: ".post_article img",      // 본문 이미지
+      commentItem: ".comment_row",             // 댓글 아이템
+      commentText: ".comment_content",         // 댓글 텍스트
+    },
+    customHeaders: {
+      Referer: "https://www.clien.net/",
+    },
+    maxItems: 5,
+  },
+
+  // ────────────────────────────────────────────
+  // 7. 뽐뿌 — 자동차포럼
+  // URL: https://www.ppomppu.co.kr/zboard/zboard.php?id=car
+  // 구조: tr.baseList → a.baseList-title
+  // 본문: td.board-contents / 댓글: div.comment_wrapper → [id^="commentContent_"]
+  // ────────────────────────────────────────────
+  {
+    name: "뽐뿌 자동차포럼",
+    category: "car",
+    contentType: "humor",
+    sourceSite: "뽐뿌",
+    listUrl: "https://www.ppomppu.co.kr/zboard/zboard.php?id=car",
+    baseUrl: "https://www.ppomppu.co.kr",
+    selectors: {
+      listItem: "tr.baseList",                 // 글 목록 행
+      listLink: "a.baseList-title",            // 제목 링크
+      listTitle: "a.baseList-title",           // 제목 텍스트
+      contentBody: "td.board-contents",        // 상세 페이지 본문
+      contentImages: "td.board-contents img",  // 본문 이미지
+      commentItem: "div.comment_wrapper",              // 댓글 wrapper
+      commentText: "[id^='commentContent_']",          // 댓글 본문
+    },
+    customHeaders: {
+      Referer: "https://www.ppomppu.co.kr/",
+    },
+    maxItems: 5,
+  },
+
+  // ════════════════════════════════════════════
+  // ▼ 비즈니스 소스 — 아이보스 (30% 비율) ▼
+  // Project DNA: 실전 마케터·자영업자·창업자 커뮤니티
+  // ════════════════════════════════════════════
+
+  // ────────────────────────────────────────────
+  // 8. 아이보스 — 질문답변 (Q&A)
+  // URL: https://www.i-boss.co.kr/ab-2109
+  // 특징: 마케팅 실무 질문 → 원본 그대로 포스팅 + NPC가 고수 댓글
+  // 구조: div.article → div.content a[href^="/ab-2110"]
+  // ────────────────────────────────────────────
+  {
+    name: "아이보스 질문답변",
+    category: "qa",
+    contentType: "qa",
+    sourceSite: "아이보스",
+    listUrl: "https://www.i-boss.co.kr/ab-2109",
+    baseUrl: "https://www.i-boss.co.kr",
+    selectors: {
+      listItem: "div.article",                       // 질문 카드 아이템
+      listLink: "div.content a",                     // 제목+본문 링크
+      listTitle: "div.content a",                    // 제목 텍스트
+      contentBody: ".ABA-view-body",                 // 상세 페이지 본문
+      contentImages: ".ABA-view-body img",           // 본문 이미지
+      // 아이보스 댓글: .-CL 안의 .AB-cmt-view
+      commentItem: ".-CL",
+      commentText: ".AB-cmt-view",
+    },
+    customHeaders: {
+      Referer: "https://www.i-boss.co.kr/",
+    },
+    maxItems: 5,
+  },
+
+  // ────────────────────────────────────────────
+  // 9. 아이보스 — 정보공유 (마케팅 정보)
+  // URL: https://www.i-boss.co.kr/ab-6140
+  // 특징: 마케팅 정보·칼럼·쇼핑몰 운영 팁 → 3줄 요약 리라이팅
+  // 구조: tr._t → a.mb_subject[href^="ab-6141"]
+  // ────────────────────────────────────────────
+  {
+    name: "아이보스 정보공유",
+    category: "marketing",
+    contentType: "news",
+    sourceSite: "아이보스",
+    listUrl: "https://www.i-boss.co.kr/ab-6140",
+    baseUrl: "https://www.i-boss.co.kr",
+    selectors: {
+      listItem: "tr._t",                            // 글 목록 테이블 행
+      listLink: "a.mb_subject",                     // 제목 링크
+      listTitle: "a.mb_subject",                    // 제목 텍스트
+      contentBody: ".ABA-view-body",                // 상세 페이지 본문
+      contentImages: ".ABA-view-body img",          // 본문 이미지
+      commentItem: ".-CL",
+      commentText: ".AB-cmt-view",
+    },
+    customHeaders: {
+      Referer: "https://www.i-boss.co.kr/",
+    },
+    maxItems: 5,
   },
 ];
 
