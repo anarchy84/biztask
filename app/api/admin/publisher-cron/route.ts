@@ -343,7 +343,9 @@ async function runPublishJob(): Promise<PublishSummary> {
   // ================================================================
   if (contentType === "qa" && expertCommentText) {
     try {
-      const { data: newComment } = await supabase
+      debugLog.push(`댓글 INSERT 시도 — post_id: ${newPost.id}, author_id: ${authorId}, content: ${expertCommentText.length}자`);
+
+      const { data: newComment, error: commentError } = await supabase
         .from("comments")
         .insert({
           post_id: newPost.id,
@@ -353,8 +355,14 @@ async function runPublishJob(): Promise<PublishSummary> {
         .select("id")
         .single();
 
+      if (commentError) {
+        debugLog.push(`❌ 댓글 INSERT 에러: ${commentError.message} (code: ${commentError.code})`);
+        console.error("[Publisher] 댓글 INSERT 실패:", commentError.message);
+      }
+
       if (newComment) {
         summary.commentId = newComment.id;
+        debugLog.push(`✅ 댓글 INSERT 성공 — commentId: ${newComment.id}`);
 
         // 댓글 수 증가
         try {
@@ -365,8 +373,11 @@ async function runPublishJob(): Promise<PublishSummary> {
         }
 
         console.log(`[Publisher] 💬 전문가 댓글 발행 완료 (${expertCommentText.length}자)`);
+      } else {
+        debugLog.push("❌ newComment가 null (INSERT 후 반환값 없음)");
       }
     } catch (cmtErr) {
+      debugLog.push(`❌ 댓글 catch 에러: ${cmtErr instanceof Error ? cmtErr.message : String(cmtErr)}`);
       console.warn(
         "[Publisher] 전문가 댓글 발행 실패 (게시글은 성공):",
         cmtErr instanceof Error ? cmtErr.message : String(cmtErr)
