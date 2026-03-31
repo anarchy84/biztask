@@ -621,6 +621,40 @@ function Home() {
     router.push(buildCategoryUrl(category));
   };
 
+  // ─── 어드민 전용: 피드에서 바로 글 삭제 ───
+  // VIP(is_vip=true) 유저만 사용 가능
+  // 댓글 → 좋아요 → 게시글 순서로 삭제 (FK 제약조건 방지)
+  const handleAdminDelete = async (e: React.MouseEvent, postId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!user || !isVip) return;
+
+    const confirmed = window.confirm(
+      "🔴 어드민 삭제\n\n이 글과 달린 댓글·추천을 모두 삭제합니다.\n삭제 후 복구할 수 없습니다.\n\n진행하시겠습니까?"
+    );
+    if (!confirmed) return;
+
+    try {
+      // 1. 게시글에 달린 댓글 삭제
+      await supabase.from("comments").delete().eq("post_id", postId);
+      // 2. 게시글에 달린 좋아요 삭제
+      await supabase.from("post_likes").delete().eq("post_id", postId);
+      // 3. 게시글 삭제
+      const { error } = await supabase.from("posts").delete().eq("id", postId);
+
+      if (error) {
+        alert("삭제 실패: " + error.message);
+        return;
+      }
+
+      // UI에서 즉시 제거
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    } catch {
+      alert("네트워크 오류가 발생했습니다.");
+    }
+  };
+
   // ─── 스켈레톤 카드 컴포넌트 (게시글 로딩 중 표시) ───
   const SkeletonCard = () => (
     <div className="animate-pulse rounded-xl border border-border-color bg-card-bg p-4">
@@ -1003,6 +1037,8 @@ function Home() {
                 isLiked={likedPostIds.has(post.id)}
                 onToggleLike={handleToggleLike}
                 onCategoryClick={handleCategoryClick}
+                isAdmin={isVip}
+                onAdminDelete={handleAdminDelete}
               />
             </Link>
           ))}

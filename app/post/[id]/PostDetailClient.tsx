@@ -296,14 +296,18 @@ export default function PostDetailClient() {
   };
 
   // ═══════════════════════════════════════════════════════
-  // 게시글 삭제 핸들러 (작성자 본인만 가능)
+  // 게시글 삭제 핸들러 (작성자 본인 또는 VIP 어드민)
   // ═══════════════════════════════════════════════════════
   const handleDeletePost = async () => {
     if (!user || !post) return;
-    // 이중 권한 체크: 현재 유저 === 게시글 작성자
-    if (user.id !== post.author_id) return;
+    // 권한 체크: 작성자 본인이거나 VIP 어드민이어야 삭제 가능
+    if (user.id !== post.author_id && !isVip) return;
 
-    const confirmed = window.confirm("정말 이 글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.");
+    // VIP 어드민이 남의 글을 삭제할 때는 다른 경고 메시지
+    const confirmMsg = user.id !== post.author_id
+      ? "🔴 어드민 삭제\n\n이 글과 달린 댓글·추천을 모두 삭제합니다.\n이 작업은 되돌릴 수 없습니다."
+      : "정말 이 글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.";
+    const confirmed = window.confirm(confirmMsg);
     if (!confirmed) return;
 
     setDeleting(true);
@@ -315,12 +319,12 @@ export default function PostDetailClient() {
       // 게시글에 달린 좋아요 삭제
       await supabase.from("post_likes").delete().eq("post_id", postId);
 
-      // 게시글 삭제
-      const { error: deleteError } = await supabase
-        .from("posts")
-        .delete()
-        .eq("id", postId)
-        .eq("author_id", user.id); // RLS 추가 안전장치
+      // 게시글 삭제 (VIP는 author_id 제한 없이 삭제)
+      let deleteQuery = supabase.from("posts").delete().eq("id", postId);
+      if (!isVip) {
+        deleteQuery = deleteQuery.eq("author_id", user.id); // 일반 유저: 본인 글만
+      }
+      const { error: deleteError } = await deleteQuery;
 
       if (deleteError) {
         alert("삭제에 실패했습니다: " + deleteError.message);
@@ -617,7 +621,8 @@ export default function PostDetailClient() {
   const postAuthorAvatarUrl = getAuthorAvatarUrl(post.profiles);
 
   // 현재 유저가 이 글의 작성자인지 확인 (수정/삭제 권한)
-  const isMyPost = user !== null && user.id === post.author_id;
+  // VIP 어드민은 모든 글에 대해 삭제 권한 보유
+  const isMyPost = user !== null && (user.id === post.author_id || isVip);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 md:px-8">
@@ -667,7 +672,7 @@ export default function PostDetailClient() {
               {timeAgo(post.created_at)}
             </span>
 
-            {/* ─── 수정/삭제 더보기 메뉴 (작성자 본인만 표시) ─── */}
+            {/* ─── 수정/삭제 더보기 메뉴 (작성자 본인 또는 VIP 어드민) ─── */}
             {isMyPost && (
               <div className="relative ml-auto">
                 <button
@@ -684,19 +689,21 @@ export default function PostDetailClient() {
                 {/* 드롭다운 메뉴 */}
                 {showMenu && (
                   <div className="absolute right-0 top-8 z-10 w-32 rounded-lg border border-border-color bg-card-bg py-1 shadow-lg">
-                    {/* 수정 버튼 */}
-                    <button
-                      onClick={() => {
-                        setShowMenu(false);
-                        router.push(`/edit/${postId}`);
-                      }}
-                      className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-hover-bg hover:text-primary transition-colors"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      수정
-                    </button>
+                    {/* 수정 버튼 (본인 글에만 표시, VIP가 남의 글 볼 때는 숨김) */}
+                    {user && user.id === post.author_id && (
+                      <button
+                        onClick={() => {
+                          setShowMenu(false);
+                          router.push(`/edit/${postId}`);
+                        }}
+                        className="flex w-full items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-hover-bg hover:text-primary transition-colors"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        수정
+                      </button>
+                    )}
 
-                    {/* 삭제 버튼 */}
+                    {/* 삭제 버튼 (본인 글 + VIP 어드민) */}
                     <button
                       onClick={() => {
                         setShowMenu(false);
@@ -1022,22 +1029,28 @@ export default function PostDetailClient() {
                               <CornerDownRight className="h-3 w-3" />
                               답글
                             </button>
-                            {/* 본인 댓글이면 수정/삭제 버튼 표시 */}
-                            {user && user.id === comment.user_id && editingCommentId !== comment.id && (
+                            {/* 본인 댓글이면 수정/삭제 버튼, VIP는 삭제만 표시 */}
+                            {user && (user.id === comment.user_id || isVip) && editingCommentId !== comment.id && (
                               <>
-                                {/* 수정 버튼 */}
-                                <button
-                                  onClick={() => startEditComment(comment)}
-                                  className="flex items-center gap-1 text-xs text-muted hover:text-primary"
-                                  aria-label="댓글 수정"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                  수정
-                                </button>
-                                {/* 삭제 버튼 */}
+                                {/* 수정 버튼 (본인 댓글에만 표시) */}
+                                {user.id === comment.user_id && (
+                                  <button
+                                    onClick={() => startEditComment(comment)}
+                                    className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+                                    aria-label="댓글 수정"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    수정
+                                  </button>
+                                )}
+                                {/* 삭제 버튼 (본인 댓글 + VIP 어드민) */}
                                 <button
                                   onClick={() => handleDeleteComment(comment.id)}
-                                  className="flex items-center gap-1 text-xs text-muted hover:text-red-400"
+                                  className={`flex items-center gap-1 text-xs ${
+                                    user.id !== comment.user_id
+                                      ? "text-red-400/70 hover:text-red-400"
+                                      : "text-muted hover:text-red-400"
+                                  }`}
                                   aria-label="댓글 삭제"
                                 >
                                   <Trash2 className="h-3 w-3" />

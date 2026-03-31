@@ -17,6 +17,7 @@ import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 
 // ─── Props 타입 정의 ───
@@ -36,6 +37,9 @@ type PostCardProps = {
   isLiked: boolean;
   onToggleLike: (e: React.MouseEvent, postId: string) => void;
   onCategoryClick: (e: React.MouseEvent, category: string) => void;
+  // 어드민 전용: VIP 유저일 때 삭제 버튼 표시
+  isAdmin?: boolean;
+  onAdminDelete?: (e: React.MouseEvent, postId: string) => void;
 };
 
 // ─── 카테고리 뱃지 색상 (전역 상수 기반) ───
@@ -187,6 +191,8 @@ export default function PostCard({
   isLiked,
   onToggleLike,
   onCategoryClick,
+  isAdmin,
+  onAdminDelete,
 }: PostCardProps) {
   return (
     <div className="post-card rounded-xl border border-border-color bg-card-bg">
@@ -324,6 +330,18 @@ export default function PostCard({
           <Bookmark className="h-4 w-4" />
           <span className="hidden sm:inline">저장</span>
         </button>
+
+        {/* 어드민 전용: 삭제 버튼 (VIP 유저에게만 표시) */}
+        {isAdmin && onAdminDelete && (
+          <button
+            className="ml-auto flex items-center gap-1 rounded-full bg-red-500/10 px-2.5 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300"
+            onClick={(e) => onAdminDelete(e, id)}
+            aria-label="어드민 삭제"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">삭제</span>
+          </button>
+        )}
       </div>
     </div>
   );
