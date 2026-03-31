@@ -13,6 +13,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/utils/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { CATEGORY_LABELS } from "@/lib/constants";
 
 // ─── 타입 정의 (그릿 확장) ───
 interface Persona {
@@ -43,18 +44,18 @@ interface ActionResult {
   relevance?: number;   // 관심도 점수 (0~100)
 }
 
-// ─── 카테고리 목록 ───
-const CATEGORIES = ["자유", "사업", "마케팅", "커리어", "이직", "재테크", "트렌드"];
+// ─── 카테고리 목록 (전역 상수에서 import) ───
+// CATEGORY_LABELS: ["자유", "질문", "사업", "마케팅", "부업", "유머"]
+const CATEGORIES = CATEGORY_LABELS;
 
 // ─── 카테고리 → 업종 매핑 (관심도 가산점용) ───
 const CATEGORY_INDUSTRY_MAP: Record<string, string[]> = {
   "마케팅": ["마케팅", "디자인", "IT/개발", "컨설팅/분석"],
   "사업": ["요식업", "쇼핑몰", "프리랜서", "제조업", "자영업/요식업", "다점포/부업", "예비창업"],
-  "커리어": ["IT/개발", "마케팅", "디자인", "컨설팅/분석"],
-  "이직": ["IT/개발", "마케팅", "디자인"],
-  "재테크": ["다점포/부업", "유통/쇼핑", "컨설팅/분석"],
-  "트렌드": ["IT/개발", "유머/콘텐츠", "IT/요식업", "마케팅"],
-  "자유": [], // 자유 카테고리는 매핑 보너스 없음 (누구나 가능)
+  "질문": ["마케팅", "IT/개발", "디자인", "컨설팅/분석", "요식업", "쇼핑몰"],
+  "부업": ["다점포/부업", "유통/쇼핑", "프리랜서", "쇼핑몰"],
+  "유머": [],   // 유머 카테고리는 매핑 보너스 없음 (누구나 가능)
+  "자유": [],   // 자유 카테고리는 매핑 보너스 없음 (누구나 가능)
 };
 
 // ─── 템플릿 (API 전체 장애 시 최후의 폴백 전용) ───

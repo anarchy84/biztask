@@ -26,15 +26,12 @@ type TrendingSidebarProps = {
   items: TrendingItem[];
 };
 
-// ─── 카테고리 뱃지 색상 (소형 버전) ───
+// ─── 카테고리 뱃지 색상 (전역 상수 기반, 소형 버전) ───
+import { CATEGORY_COLORS, LABEL_TO_SLUG } from "@/lib/constants";
 function getCategoryMiniColor(category: string): string {
-  const colorMap: Record<string, string> = {
-    사업: "text-primary-light",
-    마케팅: "text-purple-400",
-    커리어: "text-cyan-400",
-    자유: "text-amber-400",
-  };
-  return colorMap[category] || "text-gray-400";
+  const slug = LABEL_TO_SLUG[category] || category;
+  const colors = CATEGORY_COLORS[slug];
+  return colors ? colors.text : "text-gray-400";
 }
 
 // ─── 순위 뱃지 스타일 (1~3위 형광 그린 강조, 4~5위 일반) ───

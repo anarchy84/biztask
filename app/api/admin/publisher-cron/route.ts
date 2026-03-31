@@ -20,6 +20,7 @@ import { rewriteArticle } from "@/lib/scrapers/rewriter";
 import { downloadAndUploadImages } from "@/lib/scrapers/image-uploader";
 import type { RewriterPersona } from "@/lib/scrapers/rewriter";
 import type { ScrapedArticle } from "@/lib/scrapers/types";
+import { SCRAPER_CATEGORY_MAP, SLUG_TO_LABEL, CATEGORY_COMMUNITY_MAP } from "@/lib/constants";
 
 // ─── KST 시간 유틸 ───
 function getKSTDate(): string {
@@ -32,25 +33,10 @@ function getKSTHour(): number {
   return kst.getUTCHours();
 }
 
-// ─── 카테고리 → 커뮤니티 ID 매핑 ───
-// 뉴스/비즈니스 카테고리는 전용 커뮤니티에, 유머/자동차는 community_id 없이 발행
-const CATEGORY_COMMUNITY_MAP: Record<string, string> = {
-  ai: "e92e136f-df36-4c8c-a5ad-cb8d999649b9",         // 초급AI 실전반
-  marketing: "c5a698b8-8047-41cf-83cb-548eca27e2e1",   // 마케팅
-  business: "51c60f49-c1ba-407b-9de2-396657f15102",    // 사업
-  qa: "c5a698b8-8047-41cf-83cb-548eca27e2e1",          // Q&A도 마케팅 커뮤니티
-};
-
-// ─── 카테고리 → posts.category 한글 값 ───
-const CATEGORY_LABEL_MAP: Record<string, string> = {
-  humor: "유머",
-  free: "자유",
-  car: "자동차",
-  qa: "질문답변",
-  ai: "AI",
-  marketing: "마케팅",
-  business: "사업",
-};
+// ─── 카테고리 매핑은 전역 상수에서 import ───
+// SCRAPER_CATEGORY_MAP: 스크래퍼 내부코드(car, ai) → 공식 slug(free)
+// SLUG_TO_LABEL: 공식 slug → 한글 label (free→자유, qa→질문)
+// CATEGORY_COMMUNITY_MAP: 공식 slug → 커뮤니티 ID
 
 // ─── 발행 결과 요약 ───
 interface PublishSummary {
@@ -304,8 +290,10 @@ async function runPublishJob(): Promise<PublishSummary> {
   // ================================================================
   // STEP 5: 게시글 발행 (posts 테이블 INSERT)
   // ================================================================
-  const communityId = CATEGORY_COMMUNITY_MAP[backlogItem.category] || null;
-  const postCategory = CATEGORY_LABEL_MAP[backlogItem.category] || "자유";
+  // 스크래퍼 내부 카테고리(car, ai 등) → 공식 slug(free, qa 등)로 강제 변환
+  const officialSlug = SCRAPER_CATEGORY_MAP[backlogItem.category] || "free";
+  const communityId = CATEGORY_COMMUNITY_MAP[officialSlug] || null;
+  const postCategory = SLUG_TO_LABEL[officialSlug] || "자유";
 
   const postData: Record<string, unknown> = {
     title: finalTitle,

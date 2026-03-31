@@ -32,8 +32,9 @@ import {
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
-// ─── 카테고리 옵션 목록 ───
-const CATEGORIES = ["자유", "사업", "마케팅", "커리어"];
+// ─── 카테고리 옵션 목록 (전역 상수에서 import) ───
+import { CATEGORY_LABELS } from "@/lib/constants";
+const CATEGORIES = CATEGORY_LABELS;
 
 // ═══════════════════════════════════════════════════════
 // 미디어 파일 제한 상수

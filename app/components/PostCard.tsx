@@ -38,15 +38,13 @@ type PostCardProps = {
   onCategoryClick: (e: React.MouseEvent, category: string) => void;
 };
 
-// ─── 카테고리 뱃지 색상 (다크 테마용) ───
+// ─── 카테고리 뱃지 색상 (전역 상수 기반) ───
+import { CATEGORY_COLORS, LABEL_TO_SLUG } from "@/lib/constants";
 function getCategoryColor(category: string): string {
-  const colorMap: Record<string, string> = {
-    사업: "bg-primary/20 text-primary-light",
-    마케팅: "bg-purple-500/20 text-purple-400",
-    커리어: "bg-cyan-500/20 text-cyan-400",
-    자유: "bg-amber-500/20 text-amber-400",
-  };
-  return colorMap[category] || "bg-gray-500/20 text-gray-400";
+  // label(한국어)로 들어오면 slug로 변환 후 색상 조회
+  const slug = LABEL_TO_SLUG[category] || category;
+  const colors = CATEGORY_COLORS[slug];
+  return colors ? `${colors.bg} ${colors.text}` : "bg-gray-500/20 text-gray-400";
 }
 
 // ─── 상대 시간 포맷 ───

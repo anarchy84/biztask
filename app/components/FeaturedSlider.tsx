@@ -13,16 +13,14 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Flame, ImageIcon } from "lucide-react";
 import { supabase } from "@/utils/supabase/client";
 
-// ─── 카테고리별 뱃지 배경색 ───
+// ─── 카테고리별 뱃지 배경색 (전역 상수 기반) ───
+import { CATEGORY_COLORS, LABEL_TO_SLUG } from "@/lib/constants";
 function getCategoryBadgeColor(category: string): string {
-  const colorMap: Record<string, string> = {
-    사업: "bg-primary",
-    마케팅: "bg-purple-600",
-    커리어: "bg-cyan-500",
-    자유: "bg-amber-500",
-    칼럼: "bg-indigo-600",
-  };
-  return colorMap[category] || "bg-gray-500";
+  // "칼럼"은 특별 카테고리로 별도 처리
+  if (category === "칼럼") return "bg-indigo-600";
+  const slug = LABEL_TO_SLUG[category] || category;
+  const colors = CATEGORY_COLORS[slug];
+  return colors ? colors.badge : "bg-gray-500";
 }
 
 // ─── Featured 게시글 타입 (posts 테이블에서 직접 조회) ───
