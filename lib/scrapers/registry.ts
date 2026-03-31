@@ -5,7 +5,7 @@
 // ================================================================
 
 import type { Scraper } from "./types";
-import { SCRAPER_CATEGORY_MAP } from "@/lib/constants";
+import { SCRAPER_CATEGORY_MAP, getGeeknewsCategory } from "@/lib/constants";
 
 // ─── 스크래퍼 저장소 ───
 // 카테고리 → 스크래퍼 배열 (하나의 카테고리에 여러 스크래퍼 가능)
@@ -53,12 +53,13 @@ export function getAllScrapers(): Scraper[] {
 // business(10%): (Hard Track — 향후)
 // ai(10%): (향후) → 발행 시 "free"로 변환
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  humor: 40,      // 유머 40% — 보배드림, 디시실베, 개드립, 더쿠, 웃긴대학
+  humor: 35,      // 유머 35% — 보배드림, 디시실베, 개드립, 더쿠, 웃긴대학
   car: 10,        // 자동차 10% → 발행 시 "자유" 탭으로 편입
   qa: 15,         // Q&A 15% — 아이보스 질문답변
-  marketing: 15,  // 마케팅 15% — 아이보스 정보공유
+  marketing: 13,  // 마케팅 13% — 아이보스 정보공유
   business: 10,   // 사업 10% — (Hard Track 향후 추가)
-  ai: 10,         // AI 10% → 발행 시 "자유" 탭으로 편입
+  ai: 5,          // AI 5% → 발행 시 "자유" 탭으로 편입
+  geeknews: 12,   // 긱뉴스 12% — AI/기술 트렌드 (자유60%/사업20%/마케팅20% 랜덤)
 };
 
 export function pickRandomScraper(): Scraper | null {
@@ -101,6 +102,8 @@ export function pickRandomScraper(): Scraper | null {
 // 스크래퍼가 사용하는 내부 코드(car, ai 등)를 공식 6개 카테고리 slug로 변환
 // content_backlog INSERT 시 반드시 이 함수를 거쳐야 함
 export function toOfficialCategory(scraperCategory: string): string {
+  // 긱뉴스는 자유60%/사업20%/마케팅20% 랜덤 배분
+  if (scraperCategory === "geeknews") return getGeeknewsCategory();
   return SCRAPER_CATEGORY_MAP[scraperCategory] || "free";
 }
 

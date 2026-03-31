@@ -817,6 +817,34 @@ export const HTML_SCRAPER_CONFIGS: HtmlScraperConfig[] = [
     },
     maxItems: 5,
   },
+  // ════════════════════════════════════════════
+  // ▼ AI/기술 소스 (긱뉴스) ▼
+  // ════════════════════════════════════════════
+  // GeekNews (news.hada.io) — HackerNews 한국판
+  // AI, 개발, 스타트업, 기술 트렌드 뉴스 큐레이션
+  // DOM: <tr id="tr1"> 테이블 기반, 상세는 /topic?id=N
+  // 카테고리: geeknews (registry에서 자유60%/사업20%/마케팅20% 랜덤 배분)
+  {
+    name: "긱뉴스 AI/기술",
+    category: "geeknews",
+    contentType: "news",
+    sourceSite: "GeekNews",
+    listUrl: "https://news.hada.io/",
+    baseUrl: "https://news.hada.io",
+    selectors: {
+      listItem: 'tr[id^="tr"]',            // 각 글 = <tr id="tr1">, <tr id="tr2">...
+      listLink: "a:first-of-type",          // 첫 번째 <a> = 제목 링크
+      listTitle: "a:first-of-type",         // 제목 텍스트 = 링크 텍스트
+      contentBody: "#topic_contents",       // 상세 페이지 본문
+      contentImages: "#topic_contents img", // 본문 이미지
+      commentItem: ".comment_row",          // 댓글 아이템
+      commentText: ".comment",              // 댓글 텍스트
+    },
+    customHeaders: {
+      Referer: "https://news.hada.io/",
+    },
+    maxItems: 5,
+  },
 ];
 
 // ─── 팩토리 함수: Config 배열 → HtmlScraper 인스턴스 배열 ───

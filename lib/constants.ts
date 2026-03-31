@@ -48,7 +48,18 @@ export const SCRAPER_CATEGORY_MAP: Record<string, string> = {
   ai: "free",             // AI → 자유 (별도 AI 탭 없음)
   free: "free",           // 자유 → 자유
   sidejob: "sidejob",     // 부업 → 부업
+  // geeknews는 고정 매핑 없음 → getGeeknewsCategory()로 랜덤 매핑
 };
+
+// ─── 긱뉴스 전용 랜덤 카테고리 배분 ───
+// 비율: 자유 60% / 사업 20% / 마케팅 20%
+// AI/기술 뉴스는 다양한 카테고리에 분산 노출시키기 위한 전략
+export function getGeeknewsCategory(): string {
+  const rand = Math.random() * 100;
+  if (rand < 60) return "free";       // 60%
+  if (rand < 80) return "business";   // 20%
+  return "marketing";                  // 20%
+}
 
 // ─── 카테고리별 UI 색상 (배경 + 텍스트) ───
 // PostCard, FeaturedSlider, TrendingSidebar에서 공통으로 사용
