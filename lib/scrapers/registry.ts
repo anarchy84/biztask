@@ -52,14 +52,17 @@ export function getAllScrapers(): Scraper[] {
 // marketing(15%): 아이보스 정보공유
 // business(10%): (Hard Track — 향후)
 // ai(10%): (향후) → 발행 시 "free"로 변환
+// ─── 콘텐츠 수집 비율 (2026-03-31 조정) ───
+// 목표 발행 비율: 자유+유머 40% / AI 20% / 마케팅+사업 20% / 자동차 10% / 일반뉴스 10%
 const CATEGORY_WEIGHTS: Record<string, number> = {
-  humor: 35,      // 유머 35% — 보배드림, 디시실베, 개드립, 더쿠, 웃긴대학
-  car: 10,        // 자동차 10% → 발행 시 "자유" 탭으로 편입
-  qa: 15,         // Q&A 15% — 아이보스 질문답변
-  marketing: 13,  // 마케팅 13% — 아이보스 정보공유
-  business: 10,   // 사업 10% — (Hard Track 향후 추가)
-  ai: 5,          // AI 5% → 발행 시 "자유" 탭으로 편입
-  geeknews: 12,   // 긱뉴스 12% — AI/기술 트렌드 (자유60%/사업20%/마케팅20% 랜덤)
+  humor: 20,      // 유머 20% — (자유+유머 합산 40%)
+  free: 20,       // 자유 20% — 일반뉴스/이슈 포함
+  car: 10,        // 자동차 10%
+  marketing: 10,  // 마케팅 10% — (마케팅+사업 합산 20%)
+  business: 10,   // 사업 10%
+  ai: 10,         // AI 10% — (geeknews AI분 합산으로 ~20%)
+  geeknews: 15,   // 긱뉴스 15% — 대부분 AI로 배분
+  qa: 5,          // Q&A 5% — 질문답변
 };
 
 export function pickRandomScraper(): Scraper | null {
