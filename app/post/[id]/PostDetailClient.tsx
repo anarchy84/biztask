@@ -31,6 +31,8 @@ import {
   FileText,
   Drama,
   CornerDownRight,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { useImpersonation } from "@/app/context/ImpersonationContext";
@@ -62,8 +64,13 @@ type Comment = {
   content: string;
   created_at: string;
   parent_id: string | null;
+  upvotes: number;
+  downvotes: number;
   profiles: ProfileInfo | ProfileInfo[] | null;
 };
+
+// 댓글 투표 상태 (내가 어떤 투표를 했는지)
+type CommentVoteMap = Record<string, "up" | "down" | null>;
 
 // ─── 헬퍼 함수 ───
 
@@ -154,6 +161,12 @@ export default function PostDetailClient() {
   // shareToast: 공유 링크 복사 완료 토스트 메시지 표시 여부
   const [shareToast, setShareToast] = useState(false);
 
+  // ─── 댓글 투표 관련 상태 ───
+  // myCommentVotes: 내가 한 댓글 투표 (comment_id → 'up' | 'down' | null)
+  const [myCommentVotes, setMyCommentVotes] = useState<CommentVoteMap>({});
+  // commentVoteLoading: 투표 처리 중인 댓글 ID (중복 클릭 방지)
+  const [commentVoteLoading, setCommentVoteLoading] = useState<string | null>(null);
+
   // ─── VIP 관리 도구 관련 상태 ───
   // isVip: 현재 로그인한 유저가 VIP인지 여부
   const [isVip, setIsVip] = useState(false);
@@ -179,7 +192,7 @@ export default function PostDetailClient() {
     const { data } = await supabase
       .from("comments")
       .select(
-        `id, post_id, user_id, content, created_at, parent_id,
+        `id, post_id, user_id, content, created_at, parent_id, upvotes, downvotes,
          profiles ( nickname, avatar_url )`
       )
       .eq("post_id", postId)
@@ -202,6 +215,106 @@ export default function PostDetailClient() {
     },
     [postId]
   );
+
+  // ─── 내가 이 글의 댓글에 투표했는지 확인 ───
+  const fetchMyCommentVotes = useCallback(
+    async (userId: string) => {
+      const { data } = await supabase
+        .from("comment_votes")
+        .select("comment_id, vote_type")
+        .eq("user_id", userId);
+
+      if (data) {
+        const voteMap: CommentVoteMap = {};
+        for (const v of data) {
+          voteMap[v.comment_id] = v.vote_type as "up" | "down";
+        }
+        setMyCommentVotes(voteMap);
+      }
+    },
+    []
+  );
+
+  // ─── 댓글 투표 핸들러 (Supabase 직접 호출 — RLS 기반) ───
+  const handleCommentVote = async (commentId: string, voteType: "up" | "down") => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+    if (commentVoteLoading) return; // 중복 클릭 방지
+
+    setCommentVoteLoading(commentId);
+    try {
+      // 빙의 모드: NPC user_id 사용
+      const effectiveUserId = isImpersonating && impersonating
+        ? impersonating.user_id
+        : user.id;
+
+      // 기존 투표 확인
+      const { data: existingVote } = await supabase
+        .from("comment_votes")
+        .select("id, vote_type")
+        .eq("comment_id", commentId)
+        .eq("user_id", effectiveUserId)
+        .maybeSingle();
+
+      let newVoteType: "up" | "down" | null = voteType;
+
+      if (existingVote) {
+        if (existingVote.vote_type === voteType) {
+          // 같은 타입 → 투표 취소
+          await supabase.from("comment_votes").delete().eq("id", existingVote.id);
+          newVoteType = null;
+        } else {
+          // 다른 타입 → 변경
+          await supabase.from("comment_votes").update({ vote_type: voteType }).eq("id", existingVote.id);
+        }
+      } else {
+        // 새 투표
+        await supabase.from("comment_votes").insert({
+          comment_id: commentId,
+          user_id: effectiveUserId,
+          vote_type: voteType,
+        });
+      }
+
+      // 카운트 재계산
+      const { count: upCount } = await supabase
+        .from("comment_votes")
+        .select("*", { count: "exact", head: true })
+        .eq("comment_id", commentId)
+        .eq("vote_type", "up");
+
+      const { count: downCount } = await supabase
+        .from("comment_votes")
+        .select("*", { count: "exact", head: true })
+        .eq("comment_id", commentId)
+        .eq("vote_type", "down");
+
+      // 댓글 테이블 업데이트
+      await supabase
+        .from("comments")
+        .update({ upvotes: upCount || 0, downvotes: downCount || 0 })
+        .eq("id", commentId);
+
+      // 로컬 상태 업데이트
+      setMyCommentVotes((prev) => ({
+        ...prev,
+        [commentId]: newVoteType,
+      }));
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? { ...c, upvotes: upCount || 0, downvotes: downCount || 0 }
+            : c
+        )
+      );
+    } catch {
+      console.error("댓글 투표 실패");
+    } finally {
+      setCommentVoteLoading(null);
+    }
+  };
 
   // ─── 내가 이 글을 저장(북마크)했는지 확인 ───
   const checkMySave = useCallback(
@@ -230,6 +343,7 @@ export default function PostDetailClient() {
         await Promise.all([
           checkMyLike(session.user.id),
           checkMySave(session.user.id),
+          fetchMyCommentVotes(session.user.id),
         ]);
 
         // 내 프로필 아바타 + VIP 여부 가져오기
@@ -253,7 +367,7 @@ export default function PostDetailClient() {
     };
 
     init();
-  }, [fetchPost, fetchComments, checkMyLike, checkMySave]);
+  }, [fetchPost, fetchComments, checkMyLike, checkMySave, fetchMyCommentVotes]);
 
   // ─── 더보기 메뉴 외부 클릭 시 닫기 ───
   useEffect(() => {
@@ -1107,6 +1221,38 @@ export default function PostDetailClient() {
                             {comment.content}
                           </p>
                         )}
+
+                        {/* ─── 댓글 투표 버튼 (좋아요/싫어요) ─── */}
+                        {editingCommentId !== comment.id && (
+                          <div className="mt-1.5 flex items-center gap-3">
+                            <button
+                              onClick={() => handleCommentVote(comment.id, "up")}
+                              disabled={commentVoteLoading === comment.id}
+                              className={`flex items-center gap-1 text-xs transition-colors ${
+                                myCommentVotes[comment.id] === "up"
+                                  ? "text-primary font-medium"
+                                  : "text-muted hover:text-primary"
+                              }`}
+                              aria-label="댓글 좋아요"
+                            >
+                              <ThumbsUp className={`h-3.5 w-3.5 ${myCommentVotes[comment.id] === "up" ? "fill-primary" : ""}`} />
+                              {comment.upvotes > 0 && <span>{comment.upvotes}</span>}
+                            </button>
+                            <button
+                              onClick={() => handleCommentVote(comment.id, "down")}
+                              disabled={commentVoteLoading === comment.id}
+                              className={`flex items-center gap-1 text-xs transition-colors ${
+                                myCommentVotes[comment.id] === "down"
+                                  ? "text-red-400 font-medium"
+                                  : "text-muted hover:text-red-400"
+                              }`}
+                              aria-label="댓글 싫어요"
+                            >
+                              <ThumbsDown className={`h-3.5 w-3.5 ${myCommentVotes[comment.id] === "down" ? "fill-red-400" : ""}`} />
+                              {comment.downvotes > 0 && <span>{comment.downvotes}</span>}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1209,6 +1355,38 @@ export default function PostDetailClient() {
                                   <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
                                     {reply.content}
                                   </p>
+                                )}
+
+                                {/* ─── 답글 투표 버튼 (좋아요/싫어요) ─── */}
+                                {editingCommentId !== reply.id && (
+                                  <div className="mt-1.5 flex items-center gap-3">
+                                    <button
+                                      onClick={() => handleCommentVote(reply.id, "up")}
+                                      disabled={commentVoteLoading === reply.id}
+                                      className={`flex items-center gap-1 text-xs transition-colors ${
+                                        myCommentVotes[reply.id] === "up"
+                                          ? "text-primary font-medium"
+                                          : "text-muted hover:text-primary"
+                                      }`}
+                                      aria-label="답글 좋아요"
+                                    >
+                                      <ThumbsUp className={`h-3.5 w-3.5 ${myCommentVotes[reply.id] === "up" ? "fill-primary" : ""}`} />
+                                      {reply.upvotes > 0 && <span>{reply.upvotes}</span>}
+                                    </button>
+                                    <button
+                                      onClick={() => handleCommentVote(reply.id, "down")}
+                                      disabled={commentVoteLoading === reply.id}
+                                      className={`flex items-center gap-1 text-xs transition-colors ${
+                                        myCommentVotes[reply.id] === "down"
+                                          ? "text-red-400 font-medium"
+                                          : "text-muted hover:text-red-400"
+                                      }`}
+                                      aria-label="답글 싫어요"
+                                    >
+                                      <ThumbsDown className={`h-3.5 w-3.5 ${myCommentVotes[reply.id] === "down" ? "fill-red-400" : ""}`} />
+                                      {reply.downvotes > 0 && <span>{reply.downvotes}</span>}
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </div>

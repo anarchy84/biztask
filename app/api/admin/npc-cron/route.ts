@@ -620,16 +620,20 @@ async function executeNpcCron(
       continue;
     }
 
-    // 4. 행동 유형 결정 (2026-04-01 조정)
-    // 보팅 50% → 댓글 40% → 게시글 10%
-    // 보팅이 가장 빈번해야 추천수가 자연스럽게 쌓임
-    let actionType: "post" | "comment" | "vote" = "vote";
+    // 4. 행동 유형 결정 (2026-04-01 v2 — 대댓글 + 댓글투표 추가)
+    // 게시글보팅 30% → 댓글 25% → 대댓글 15% → 댓글투표 20% → 게시글 10%
+    // 대댓글과 댓글투표가 추가되어 리얼리티 극대화
+    let actionType: "post" | "comment" | "vote" | "reply" | "comment_vote" = "vote";
     const roll = Math.random();
 
-    if (canLike && roll < 0.50) {
+    if (canLike && roll < 0.30) {
       actionType = "vote";
-    } else if (canComment && roll < 0.90) {
+    } else if (canComment && roll < 0.55) {
       actionType = "comment";
+    } else if (canComment && roll < 0.70) {
+      actionType = "reply";         // 대댓글 (댓글 할당량 공유)
+    } else if (canLike && roll < 0.90) {
+      actionType = "comment_vote";  // 댓글 좋아요/싫어요 (추천 할당량 공유)
     } else if (canPost) {
       actionType = "post";
     } else if (canLike) {
@@ -992,6 +996,278 @@ async function executeNpcCron(
           success: false,
           detail: `추천 저장 실패`,
           error: likeError.message,
+        });
+      }
+    }
+    // ═══ 대댓글(Reply) 작성 — 2026-04-01 신규 ═══
+    // 기존 댓글에 대댓글을 달아 NPC끼리 대화하는 느낌 연출
+    // 30% 확률로만 실행 (모든 댓글에 대댓글이 달리지 않도록)
+    else if (actionType === "reply") {
+      // 최근 게시글들의 댓글을 가져옴
+      const recentPostIds = allPosts.slice(0, 15).map(p => p.id);
+      const { data: recentComments } = await supabase
+        .from("comments")
+        .select("id, post_id, user_id, content, parent_id, profiles ( nickname )")
+        .in("post_id", recentPostIds)
+        .is("parent_id", null)                 // 부모 댓글만 (대댓글의 대댓글 방지)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (!recentComments || recentComments.length === 0) {
+        summary.skipped++;
+        summary.details?.push({
+          action: "reply",
+          persona: persona.nickname,
+          success: true,
+          detail: `대댓글 달 댓글 없음 → 스킵`,
+        });
+        continue;
+      }
+
+      // 30% 확률 필터 (모든 댓글에 대댓글이 달리면 부자연스러움)
+      if (Math.random() > 0.30) {
+        summary.skipped++;
+        summary.details?.push({
+          action: "reply",
+          persona: persona.nickname,
+          success: true,
+          detail: `대댓글 확률 미달 → 스킵`,
+        });
+        continue;
+      }
+
+      // 자기 자신의 댓글 제외
+      const otherComments = recentComments.filter(c => c.user_id !== persona.user_id);
+      if (otherComments.length === 0) {
+        summary.skipped++;
+        continue;
+      }
+
+      // Anarchy(KOL) 댓글 우선 탐색 → 없으면 랜덤
+      const kolComments = otherComments.filter(c => kolUserIds.has(c.user_id));
+      const targetComment = kolComments.length > 0 && Math.random() < 0.6
+        ? pickRandom(kolComments)
+        : pickRandom(otherComments);
+
+      const targetCommentNickname = (() => {
+        const p = targetComment.profiles;
+        if (!p) return "익명";
+        if (Array.isArray(p)) return (p[0] as { nickname?: string })?.nickname || "익명";
+        return (p as { nickname?: string }).nickname || "익명";
+      })();
+      const isKolComment = kolUserIds.has(targetComment.user_id);
+
+      // 대상 게시글 내용 가져오기
+      const { data: replyPost } = await supabase
+        .from("posts")
+        .select("title, content, category")
+        .eq("id", targetComment.post_id)
+        .single();
+
+      const systemPrompt = buildDynamicSystemPrompt(persona, 60, isKolComment);
+      let replyPrompt: string;
+
+      if (isKolComment) {
+        // KOL(Anarchy) 댓글에는 무조건 긍정적 + 질문/지지
+        replyPrompt =
+          `커뮤니티에서 @${targetCommentNickname} 님이 남긴 댓글에 대댓글을 달아.\n\n` +
+          `게시글 제목: ${replyPost?.title || ""}\n` +
+          `@${targetCommentNickname} 님의 댓글: "${targetComment.content}"\n\n` +
+          `- @${targetCommentNickname} 님의 의견에 공감하거나 지지하는 대댓글을 작성\n` +
+          `- "저도 그 생각이에요", "오 좋은 관점이네요" 식으로 호응\n` +
+          `- 가능하면 추가 질문을 해서 대화를 이어가\n` +
+          `- 20~80자. 자연스럽게\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      } else {
+        // 일반 댓글: 페르소나 성향에 따라 동조/반박
+        replyPrompt =
+          `커뮤니티에서 @${targetCommentNickname} 님이 남긴 댓글에 대댓글을 달아.\n\n` +
+          `게시글 제목: ${replyPost?.title || ""}\n` +
+          `@${targetCommentNickname} 님의 댓글: "${targetComment.content}"\n\n` +
+          `- @${targetCommentNickname} 님의 의견에 대해 네 관점으로 반응해\n` +
+          `- 동의하면 "ㅇㅈ" 대신 왜 동의하는지 구체적으로\n` +
+          `- 다른 생각이면 "근데 저는~" 식으로 부드럽게 다른 의견 제시 (공격 금지)\n` +
+          `- @${targetCommentNickname} 닉네임을 자연스럽게 포함해서 대화하는 느낌을 줘\n` +
+          `- 20~80자. 자연스럽게\n` +
+          `- 댓글만 출력. 설명 붙이지 마`;
+      }
+
+      const aiResult = await generateWithAI(apiKey, systemPrompt, replyPrompt);
+
+      if (aiResult.text) {
+        const trimmed = aiResult.text.trim();
+        const LOW_EFFORT_PATTERNS = /^(ㅇㅇ|ㄹㅇ|ㅋㅋ+|ㅎㅎ+|ㅇㅈ|ㄱㅇㅇ|이건 인정|인정)$/;
+        const isLowEffort = LOW_EFFORT_PATTERNS.test(trimmed) || trimmed.length < 8;
+
+        if (trimmed.toUpperCase() === "SKIP" || isLowEffort) {
+          summary.skipped++;
+          summary.details?.push({
+            action: "reply",
+            persona: persona.nickname,
+            success: true,
+            detail: `대댓글 SKIP (단답 또는 저품질)`,
+          });
+        } else {
+          const { error } = await supabase
+            .from("comments")
+            .insert({
+              post_id: targetComment.post_id,
+              user_id: persona.user_id,
+              content: trimmed,
+              parent_id: targetComment.id,  // 대댓글 핵심: parent_id 설정
+            });
+
+          if (!error) {
+            // comment_count 증가
+            const { data: cp } = await supabase.from("posts").select("comment_count").eq("id", targetComment.post_id).single();
+            await supabase
+              .from("posts")
+              .update({ comment_count: (cp?.comment_count ?? 0) + 1 })
+              .eq("id", targetComment.post_id);
+
+            await supabase
+              .from("personas")
+              .update({
+                today_comments: todayComments + 1,
+                total_comments: (persona.total_comments ?? 0) + 1,
+                last_active_at: now.toISOString(),
+              })
+              .eq("id", persona.id);
+
+            summary.executed++;
+            summary.comments++;
+            summary.details?.push({
+              action: "reply",
+              persona: persona.nickname,
+              success: true,
+              detail: `@${targetCommentNickname} 에게 대댓글${isKolComment ? " (KOL 케어)" : ""}`,
+              provider: aiResult.provider,
+            });
+          } else {
+            summary.errors++;
+            summary.details?.push({
+              action: "reply",
+              persona: persona.nickname,
+              success: false,
+              detail: `대댓글 저장 실패`,
+              error: error.message,
+            });
+          }
+        }
+      }
+    }
+    // ═══ 댓글 투표(좋아요/싫어요) — 2026-04-01 신규 ═══
+    // 댓글에 좋아요 또는 싫어요를 눌러서 리얼리티 강화
+    // KOL(Anarchy) 댓글 → 무조건 좋아요
+    // 일반 댓글 → 페르소나 성향에 따라 좋아요(80%) / 싫어요(20%)
+    else if (actionType === "comment_vote") {
+      const recentPostIds = allPosts.slice(0, 20).map(p => p.id);
+      const { data: voteTargetComments } = await supabase
+        .from("comments")
+        .select("id, user_id, content, post_id")
+        .in("post_id", recentPostIds)
+        .neq("user_id", persona.user_id)   // 자기 댓글 제외
+        .order("created_at", { ascending: false })
+        .limit(40);
+
+      if (!voteTargetComments || voteTargetComments.length === 0) {
+        summary.skipped++;
+        summary.details?.push({
+          action: "comment_vote",
+          persona: persona.nickname,
+          success: true,
+          detail: `투표할 댓글 없음`,
+        });
+        continue;
+      }
+
+      // 이미 투표한 댓글 제외
+      const commentIds = voteTargetComments.map(c => c.id);
+      const { data: existingVotes } = await supabase
+        .from("comment_votes")
+        .select("comment_id")
+        .eq("user_id", persona.user_id)
+        .in("comment_id", commentIds);
+
+      const votedIds = new Set((existingVotes || []).map(v => v.comment_id));
+      const unvoted = voteTargetComments.filter(c => !votedIds.has(c.id));
+
+      if (unvoted.length === 0) {
+        summary.skipped++;
+        summary.details?.push({
+          action: "comment_vote",
+          persona: persona.nickname,
+          success: true,
+          detail: `모든 댓글에 이미 투표함`,
+        });
+        continue;
+      }
+
+      // KOL 댓글 우선 (무조건 좋아요)
+      const kolUnvoted = unvoted.filter(c => kolUserIds.has(c.user_id));
+      let targetComment;
+      let voteType: "up" | "down" = "up";
+
+      if (kolUnvoted.length > 0 && Math.random() < 0.7) {
+        targetComment = pickRandom(kolUnvoted);
+        voteType = "up";  // KOL 댓글 → 무조건 좋아요
+      } else {
+        targetComment = pickRandom(unvoted);
+        voteType = Math.random() < 0.80 ? "up" : "down";  // 80% 좋아요, 20% 싫어요
+      }
+
+      const { error: voteError } = await supabase
+        .from("comment_votes")
+        .insert({
+          comment_id: targetComment.id,
+          user_id: persona.user_id,
+          vote_type: voteType,
+        });
+
+      if (!voteError) {
+        // 댓글의 upvotes/downvotes 카운트 업데이트
+        const { count: upCount } = await supabase
+          .from("comment_votes")
+          .select("*", { count: "exact", head: true })
+          .eq("comment_id", targetComment.id)
+          .eq("vote_type", "up");
+
+        const { count: downCount } = await supabase
+          .from("comment_votes")
+          .select("*", { count: "exact", head: true })
+          .eq("comment_id", targetComment.id)
+          .eq("vote_type", "down");
+
+        await supabase
+          .from("comments")
+          .update({ upvotes: upCount || 0, downvotes: downCount || 0 })
+          .eq("id", targetComment.id);
+
+        await supabase
+          .from("personas")
+          .update({
+            today_likes: todayLikes + 1,
+            total_likes: (persona.total_likes ?? 0) + 1,
+            last_active_at: now.toISOString(),
+          })
+          .eq("id", persona.id);
+
+        summary.executed++;
+        summary.votes++;
+        summary.details?.push({
+          action: "comment_vote",
+          persona: persona.nickname,
+          success: true,
+          detail: `댓글 ${voteType === "up" ? "👍" : "👎"}${kolUserIds.has(targetComment.user_id) ? " (KOL 댓글)" : ""}`,
+        });
+      } else {
+        summary.errors++;
+        summary.details?.push({
+          action: "comment_vote",
+          persona: persona.nickname,
+          success: false,
+          detail: `댓글 투표 실패`,
+          error: voteError.message,
         });
       }
     }
