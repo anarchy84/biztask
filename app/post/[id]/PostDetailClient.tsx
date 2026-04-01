@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -140,6 +140,9 @@ export default function PostDetailClient() {
   // 답글 관련 상태
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyingToNickname, setReplyingToNickname] = useState<string>("");
+
+  // 댓글 입력창 ref (답글 시 자동 포커스용)
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 게시글 삭제 관련 상태
   const [deleting, setDeleting] = useState(false);
@@ -527,14 +530,40 @@ export default function PostDetailClient() {
   };
 
   // ─── 답글 핸들러 ───
+  // SNS처럼 답글 버튼 누르면 @닉네임 자동 삽입 + 입력창 포커스
   const handleReply = (commentId: string, nickname: string) => {
     setReplyingTo(commentId);
     setReplyingToNickname(nickname);
+
+    // @닉네임을 댓글 입력창에 자동 삽입 (기존 텍스트가 비어있을 때만)
+    const mention = `@${nickname} `;
+    if (!commentText.trim()) {
+      setCommentText(mention);
+    } else if (!commentText.startsWith("@")) {
+      // 이미 텍스트가 있으면 앞에 @닉네임 추가
+      setCommentText(mention + commentText);
+    }
+
+    // 입력창으로 스크롤 + 포커스 (약간의 딜레이로 state 반영 후 실행)
+    setTimeout(() => {
+      if (commentTextareaRef.current) {
+        commentTextareaRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+        commentTextareaRef.current.focus();
+        // 커서를 텍스트 끝으로 이동
+        const len = commentTextareaRef.current.value.length;
+        commentTextareaRef.current.setSelectionRange(len, len);
+      }
+    }, 100);
   };
 
   const cancelReply = () => {
     setReplyingTo(null);
     setReplyingToNickname("");
+    // 답글 취소 시 @닉네임 부분만 제거 (사용자가 직접 쓴 텍스트는 유지)
+    setCommentText((prev) => {
+      const mentionPattern = /^@\S+\s*/;
+      return prev.replace(mentionPattern, "");
+    });
   };
 
   // ─── 댓글 삭제 핸들러 ───
@@ -1051,9 +1080,10 @@ export default function PostDetailClient() {
               {/* 입력 + 전송 */}
               <div className="flex-1">
                 <textarea
+                  ref={commentTextareaRef}
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="댓글을 입력하세요..."
+                  placeholder={replyingTo ? `@${replyingToNickname}에게 답글을 입력하세요...` : "댓글을 입력하세요..."}
                   rows={3}
                   className="w-full resize-none rounded-lg border border-border-color bg-input-bg px-4 py-2.5 text-sm text-foreground placeholder-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
