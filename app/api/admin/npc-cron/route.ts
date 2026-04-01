@@ -403,8 +403,13 @@ function buildDynamicSystemPrompt(
     `- 대충 쓰되 본문 내용에 구체적으로 반응하는 게 핵심\n` +
     `- "나는 OO 전문가로서~" 식 자기소개 금지. 아는 척은 자연스럽게\n` +
     `- 서론/본론/결론 구조 금지\n` +
-    `- 공격적이진 마. 의견 다르면 "글쎄" "좀 다른듯" 정도로\n` +
     `- 이모지 과용 금지\n\n` +
+    `[🛡️ Anti-Conflict 가이드라인 — 건설적 참여자 스탠스]\n` +
+    `- 모호한 정보에 대해 아는 척하거나 공격적인 딴지를 걸지 마라\n` +
+    `- 가급적 우호적이고, 질문을 던지거나, 본인의 짧은 경험담을 공유해라\n` +
+    `- 내용이 난해하면 억지로 분석하지 말고 "오 좋은 정보네", "덕분에 하나 배워감" 같은 짧고 긍정적 리액션으로 처리\n` +
+    `- 상대방 의견에 반대할 때도 "글쎄 좀 다른듯" 정도로. 날카로운 공격 절대 금지\n` +
+    `- 핵심: 이 커뮤니티의 분위기를 따뜻하게 만드는 것이 네 역할이다\n\n` +
     `[최종 체크] 디시에 이 댓글 올렸을 때 "봇이다" 소리 나면 다시 써. 단답충 소리 나도 다시 써.`
   );
 }
@@ -615,20 +620,22 @@ async function executeNpcCron(
       continue;
     }
 
-    // 4. 행동 유형 결정: 댓글을 훨씬 자주 (70%), 게시글(20%), 추천(10%)
+    // 4. 행동 유형 결정 (2026-04-01 조정)
+    // 보팅 50% → 댓글 40% → 게시글 10%
+    // 보팅이 가장 빈번해야 추천수가 자연스럽게 쌓임
     let actionType: "post" | "comment" | "vote" = "vote";
     const roll = Math.random();
 
-    if (canComment && roll < 0.7) {
+    if (canLike && roll < 0.50) {
+      actionType = "vote";
+    } else if (canComment && roll < 0.90) {
       actionType = "comment";
-    } else if (canPost && roll < 0.9) {
+    } else if (canPost) {
       actionType = "post";
     } else if (canLike) {
       actionType = "vote";
     } else if (canComment) {
       actionType = "comment";
-    } else if (canPost) {
-      actionType = "post";
     }
 
     await randomDelay();
@@ -895,7 +902,9 @@ async function executeNpcCron(
         });
       }
     }
-    // ═══ 추천(Upvote) ═══
+    // ═══ 추천(Upvote) — 2026-04-01 강화 ═══
+    // KOL(아나키) 글 + 인기글에 높은 확률로 보팅
+    // 보팅은 댓글 없이도 추천수를 올려 '베스트 게시글' 효과 유도
     else if (actionType === "vote") {
       if (allPosts.length === 0) {
         summary.skipped++;
@@ -908,11 +917,24 @@ async function executeNpcCron(
         continue;
       }
 
-      // 최신글 우선: 상위 30%에서 70% 확률로 선택
-      const voteCutoff = Math.max(1, Math.floor(allPosts.length * 0.3));
-      const targetPost = Math.random() < 0.7
-        ? pickRandom(allPosts.slice(0, voteCutoff))
-        : pickRandom(allPosts);
+      // ─── 가중치 기반 보팅 대상 선택 ───
+      // KOL 글: 가중치 5배 / 인기글(추천3+): 가중치 3배 / 최신글(상위30%): 가중치 2배
+      let targetPost;
+      const weighted: { post: typeof allPosts[0]; weight: number }[] = allPosts.map((p, idx) => {
+        let w = 1;
+        if (kolUserIds.has(p.author_id)) w *= 5;                           // KOL 글 5배
+        if (p.upvotes >= 3) w *= 3;                                         // 인기글 3배
+        else if (p.upvotes >= 1) w *= 2;                                    // 추천 1개 이상 2배
+        if (idx < Math.floor(allPosts.length * 0.3)) w *= 2;               // 최신글 2배
+        return { post: p, weight: w };
+      });
+      const totalW = weighted.reduce((s, x) => s + x.weight, 0);
+      let pick = Math.random() * totalW;
+      targetPost = weighted[0].post;
+      for (const w of weighted) {
+        pick -= w.weight;
+        if (pick <= 0) { targetPost = w.post; break; }
+      }
 
       // 중복 추천 방지
       const { data: existing } = await supabase

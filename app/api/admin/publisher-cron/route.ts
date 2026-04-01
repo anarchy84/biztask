@@ -106,6 +106,16 @@ async function runPublishJob(): Promise<PublishSummary> {
   };
 
   // ================================================================
+  // STEP 0: 발행 빈도 20% 하향 — 글 과잉 방지
+  // 20% 확률로 이번 호출은 건너뜀 (글이 너무 많아지는 것 방지)
+  // ================================================================
+  const skipRoll = Math.random();
+  if (skipRoll < 0.20) {
+    console.log(`[Publisher] 발행 스킵 (빈도 조절 20% — roll: ${skipRoll.toFixed(3)})`);
+    return { ...emptySummary, error: "빈도 조절 스킵 (20%)" };
+  }
+
+  // ================================================================
   // STEP 1: 창고에서 미발행 글 1개 가져오기 (오래된 것부터)
   // ================================================================
   const { data: backlogItem, error: fetchError } = await supabase
