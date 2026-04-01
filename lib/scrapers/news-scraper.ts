@@ -1,14 +1,24 @@
 // ================================================================
-// 뉴스클리핑 프로젝트 — 뉴스 스크래퍼
+// 뉴스클리핑 프로젝트 — 뉴스 스크래퍼 (v2 — 7개 소스 확정)
 // 날짜: 2026-04-01
-// 용도: 구글 뉴스 RSS + 아이보스 마케팅 뉴스에서 기사 수집
+// 용도: 구글 뉴스 RSS 6개 + 아이보스 HTML 1개에서 기사 수집
 //       → news_articles 테이블에 저장
-//       → 이후 AI 클러스터링 → news_clips 생성
+//       → 이후 AI 카테고리 분류 → 클러스터링 → news_clips 생성
 //
-// [기존 콘텐츠팜 스크래퍼와 분리된 이유]
-// 콘텐츠팜: 커뮤니티 글 → 리라이팅 → 게시 (content_backlog 경유)
-// 뉴스클리핑: 뉴스 기사 → 클러스터링 → 요약 카드 (news_articles → news_clips)
-// 목적과 파이프라인이 완전히 다르므로 별도 모듈로 분리
+// [데이터 소스 7개]
+// 1. 아이보스 마케팅 뉴스/칼럼 (HTML)
+// 2. 구글 뉴스 - 비즈니스 섹션 (RSS)
+// 3. 구글 뉴스 - 과학/기술 섹션 (RSS)
+// 4. 구글 뉴스 - 검색: 마케팅 (RSS)
+// 5. 구글 뉴스 - 검색: 소상공인 (RSS)
+// 6. 구글 뉴스 - 검색: 중소기업 (RSS)
+// 7. 구글 뉴스 - 검색: 광고 (RSS)
+//
+// [카테고리 4종]
+// marketing_biz: 마케팅/사업
+// tech_ai: 기술/AI
+// smallbiz: 소상공인/중소기업
+// ad_trend: 광고/트렌드
 // ================================================================
 
 import { generateAntiBotHeaders, randomJitter, getSmartReferer } from "./anti-bot";
@@ -22,39 +32,99 @@ export interface NewsArticle {
   snippet: string | null;        // 기사 본문 일부/요약
   published_at: string | null;   // 기사 발행일 (ISO 문자열)
   feed_source: string;    // 수집 출처 ('google_news', 'iboss')
-  category: string;       // 카테고리 ('economy', 'tech', 'marketing')
+  category: string;       // 카테고리 (marketing_biz, tech_ai, smallbiz, ad_trend)
+}
+
+// ─── AI 클러스터링 결과 타입 ───
+export interface ClusteringResult {
+  headline: string;         // AI가 만든 핵심 헤드라인
+  summary: string;          // 3줄 요약
+  category: string;         // 카테고리
+  articleIds: string[];     // 이 클러스터에 소속된 news_articles.id 배열
+  thumbnailUrl: string | null;  // 대표 썸네일
 }
 
 // ─── 구글 뉴스 RSS 피드 설정 ───
-// 구글 뉴스는 섹션별 RSS를 제공
-// https://news.google.com/rss/topics/CAAqIggKIhxDQkFTRHdvSkwyMHZNRGxqTjNjd0VnSnJieGdBUAE
-export interface GoogleNewsFeedConfig {
+interface GoogleNewsFeedConfig {
   name: string;       // 피드 이름 (로그용)
   feedUrl: string;    // RSS URL
-  category: string;   // BizTask 뉴스 카테고리
+  category: string;   // 기본 카테고리 (AI 재분류 전 초기값)
   maxItems: number;   // 최대 수집 기사 수
 }
 
-// ─── 구글 뉴스 RSS 피드 목록 ───
-// 한국 구글 뉴스 주요 섹션
+// ================================================================
+// ★ 확정된 7개 데이터 소스 (6개 RSS + 1개 HTML)
+// ================================================================
+
+// ─── 구글 뉴스 RSS 피드 6개 ───
+// 구글 뉴스 URL → RSS 변환 규칙:
+// topics URL: /topics/XXX → /rss/topics/XXX?hl=ko&gl=KR&ceid=KR:ko
+// search URL: /search?q=XXX → /rss/search?q=XXX&hl=ko&gl=KR&ceid=KR:ko
 export const GOOGLE_NEWS_FEEDS: GoogleNewsFeedConfig[] = [
+  // ─── [소스 2] 구글 뉴스 비즈니스 섹션 ───
   {
-    name: "구글뉴스-경제",
-    // 한국 경제 뉴스 RSS (Google News Korea - Business)
-    feedUrl: "https://news.google.com/rss/topics/CAAqIggKIhxDQkFTRHdvSkwyMHZNRGxqTjNjd0VnSnJieGdBUAE?hl=ko&gl=KR&ceid=KR:ko",
-    category: "economy",
+    name: "구글뉴스-비즈니스",
+    feedUrl:
+      "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtdHZHZ0pMVWlnQVAB?hl=ko&gl=KR&ceid=KR:ko",
+    category: "marketing_biz",
     maxItems: 15,
   },
+  // ─── [소스 3] 구글 뉴스 과학/기술 섹션 ───
   {
-    name: "구글뉴스-기술",
-    // 한국 기술 뉴스 RSS (Google News Korea - Technology)
-    feedUrl: "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGRqTVhZU0FtdHZHZ0pMVWlnQVAB?hl=ko&gl=KR&ceid=KR:ko",
-    category: "tech",
+    name: "구글뉴스-과학기술",
+    feedUrl:
+      "https://news.google.com/rss/topics/CAAqKAgKIiJDQkFTRXdvSkwyMHZNR1ptZHpWbUVnSnJieG9DUzFJb0FBUAE?hl=ko&gl=KR&ceid=KR:ko",
+    category: "tech_ai",
+    maxItems: 15,
+  },
+  // ─── [소스 4] 구글 뉴스 검색: 마케팅 ───
+  {
+    name: "구글뉴스-검색-마케팅",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%EB%A7%88%EC%BC%80%ED%8C%85&hl=ko&gl=KR&ceid=KR:ko",
+    category: "marketing_biz",
+    maxItems: 10,
+  },
+  // ─── [소스 5] 구글 뉴스 검색: 소상공인 ───
+  {
+    name: "구글뉴스-검색-소상공인",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%EC%86%8C%EC%83%81%EA%B3%B5%EC%9D%B8&hl=ko&gl=KR&ceid=KR:ko",
+    category: "smallbiz",
+    maxItems: 10,
+  },
+  // ─── [소스 6] 구글 뉴스 검색: 중소기업 ───
+  {
+    name: "구글뉴스-검색-중소기업",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%EC%A4%91%EC%86%8C%EA%B8%B0%EC%97%85&hl=ko&gl=KR&ceid=KR:ko",
+    category: "smallbiz",
+    maxItems: 10,
+  },
+  // ─── [소스 7] 구글 뉴스 검색: 광고 ───
+  {
+    name: "구글뉴스-검색-광고",
+    feedUrl:
+      "https://news.google.com/rss/search?q=%EA%B4%91%EA%B3%A0&hl=ko&gl=KR&ceid=KR:ko",
+    category: "ad_trend",
     maxItems: 10,
   },
 ];
 
-// ─── HTML 태그 제거 유틸 ───
+// ─── [소스 1] 아이보스 마케팅 뉴스/칼럼 (HTML) ───
+const IBOSS_CONFIG = {
+  name: "아이보스-마케팅뉴스칼럼",
+  listUrl: "https://www.i-boss.co.kr/ab-2876",
+  baseUrl: "https://www.i-boss.co.kr",
+  category: "marketing_biz",
+  maxItems: 15,
+};
+
+// ================================================================
+// 유틸 함수
+// ================================================================
+
+// ─── HTML 태그 제거 ───
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, "")
@@ -68,10 +138,9 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-// ─── 구글 뉴스 RSS에서 언론사명 추출 ───
+// ─── 구글 뉴스 제목에서 언론사명 분리 ───
 // 구글 뉴스 제목 형식: "기사 제목 - 언론사명"
 function extractSourceFromTitle(title: string): { cleanTitle: string; sourceName: string } {
-  // 마지막 " - " 기준으로 분리 (언론사명이 뒤에 옴)
   const lastDash = title.lastIndexOf(" - ");
   if (lastDash > 0) {
     return {
@@ -85,6 +154,7 @@ function extractSourceFromTitle(title: string): { cleanTitle: string; sourceName
 // ================================================================
 // 1. 구글 뉴스 RSS 스크래퍼
 // ================================================================
+
 export async function scrapeGoogleNews(config: GoogleNewsFeedConfig): Promise<NewsArticle[]> {
   const articles: NewsArticle[] = [];
 
@@ -98,7 +168,7 @@ export async function scrapeGoogleNews(config: GoogleNewsFeedConfig): Promise<Ne
       },
     });
 
-    console.log(`[뉴스클리핑] ${config.name} RSS 로딩: ${config.feedUrl}`);
+    console.log(`[뉴스클리핑] ${config.name} RSS 로딩: ${config.feedUrl.slice(0, 80)}...`);
     const feed = await parser.parseURL(config.feedUrl);
     const items = (feed.items || []).slice(0, config.maxItems);
 
@@ -153,18 +223,10 @@ export async function scrapeGoogleNews(config: GoogleNewsFeedConfig): Promise<Ne
 }
 
 // ================================================================
-// 2. 아이보스 마케팅 뉴스 스크래퍼
+// 2. 아이보스 마케팅 뉴스/칼럼 스크래퍼 (HTML)
 // ================================================================
-
-// 아이보스 뉴스 설정
-const IBOSS_CONFIG = {
-  name: "아이보스-마케팅뉴스",
-  // 아이보스 마케팅 뉴스 섹션 URL
-  listUrl: "https://www.i-boss.co.kr/ab-newsbot",
-  baseUrl: "https://www.i-boss.co.kr",
-  category: "marketing",
-  maxItems: 10,
-};
+// 아이보스 ab-2876: 마케팅 뉴스/칼럼 게시판
+// 게시판 형태 (테이블 기반) — 제목, 링크, 작성자(=언론사/칼럼니스트)
 
 export async function scrapeIbossNews(): Promise<NewsArticle[]> {
   const articles: NewsArticle[] = [];
@@ -172,10 +234,8 @@ export async function scrapeIbossNews(): Promise<NewsArticle[]> {
   try {
     const cheerio = await import("cheerio");
 
-    // 랜덤 딜레이 (봇 차단 우회)
+    // 봇 차단 우회: 랜덤 딜레이 + Anti-Bot 헤더
     await randomJitter(500, 1500);
-
-    // Anti-Bot 헤더 생성
     const headers = {
       ...generateAntiBotHeaders(),
       Referer: getSmartReferer(IBOSS_CONFIG.baseUrl),
@@ -195,34 +255,46 @@ export async function scrapeIbossNews(): Promise<NewsArticle[]> {
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // 아이보스 뉴스봇 페이지의 기사 목록 파싱
-    // 구조: .news-list 또는 .content-list 내 개별 기사 아이템
-    // ※ 아이보스 HTML 구조가 변경될 수 있으므로 여러 셀렉터 시도
-    const selectors = [
-      ".news-item",                  // 뉴스봇 아이템
-      ".content-list .item",         // 콘텐츠 리스트 아이템
-      ".board-list tbody tr",        // 게시판 형태
-      "article",                     // article 태그 기반
+    // ─── 아이보스 게시판 HTML 구조 파싱 ───
+    // ab-2876은 게시판 형태: 테이블 또는 리스트
+    // 여러 셀렉터를 순서대로 시도 (아이보스 리디자인 대응)
+    const selectorCandidates = [
+      // 게시판 테이블 행 (가장 일반적)
+      { list: "table.board-list tbody tr, table.list tbody tr", titleSel: "a", skipSel: ".notice" },
+      // 리스트 형태
+      { list: ".list-item, .board-item, .article-item", titleSel: "a", skipSel: ".notice" },
+      // 카드/뉴스 형태
+      { list: ".news-item, article, .content-item", titleSel: "a", skipSel: "" },
+      // 범용 폴백: 본문 내 모든 링크 블록
+      { list: "#content a[href*='ab-'], .board-body a[href*='ab-']", titleSel: "", skipSel: "" },
     ];
 
     let foundItems = false;
 
-    for (const selector of selectors) {
-      const items = $(selector);
+    for (const sel of selectorCandidates) {
+      const items = $(sel.list);
       if (items.length === 0) continue;
 
       foundItems = true;
       console.log(
-        `[뉴스클리핑] ${IBOSS_CONFIG.name}: 셀렉터 "${selector}"로 ${items.length}개 발견`
+        `[뉴스클리핑] ${IBOSS_CONFIG.name}: 셀렉터 "${sel.list.slice(0, 50)}"로 ${items.length}개 발견`
       );
 
-      items.slice(0, IBOSS_CONFIG.maxItems).each((_i, el) => {
-        // 제목과 링크 추출 (a 태그에서)
-        const linkEl = $(el).find("a").first();
-        const title = linkEl.text().trim() || $(el).find(".title, .subject, h3, h4").text().trim();
-        let link = linkEl.attr("href") || "";
+      let count = 0;
+      items.each((_i, el) => {
+        if (count >= IBOSS_CONFIG.maxItems) return false; // early exit
 
-        if (!title || title.length < 5) return;
+        // 공지사항 건너뛰기
+        if (sel.skipSel && $(el).hasClass("notice")) return;
+
+        // 제목과 링크 추출
+        const linkEl = sel.titleSel ? $(el).find(sel.titleSel).first() : $(el);
+        const rawTitle = linkEl.text().trim() ||
+          $(el).find(".title, .subject, h3, h4, td.title, td.subject").text().trim();
+        let link = linkEl.attr("href") || $(el).find("a").first().attr("href") || "";
+
+        // 제목 유효성 검사
+        if (!rawTitle || rawTitle.length < 5) return;
 
         // 상대 경로 → 절대 경로
         if (link && !link.startsWith("http")) {
@@ -230,37 +302,44 @@ export async function scrapeIbossNews(): Promise<NewsArticle[]> {
             ? IBOSS_CONFIG.baseUrl + link
             : IBOSS_CONFIG.baseUrl + "/" + link;
         }
-
         if (!link) return;
 
-        // 썸네일 추출 시도
-        const imgEl = $(el).find("img").first();
-        let thumbnailUrl = imgEl.attr("src") || imgEl.attr("data-src") || null;
-        if (thumbnailUrl && !thumbnailUrl.startsWith("http")) {
-          thumbnailUrl = IBOSS_CONFIG.baseUrl + thumbnailUrl;
+        // 이미 수집한 링크 중복 제거 (같은 페이지 내)
+        if (articles.some((a) => a.link === link)) return;
+
+        // 작성자/출처 추출 (아이보스 칼럼니스트 또는 뉴스 출처)
+        const sourceName =
+          $(el).find(".writer, .author, .name, td.writer, .source").first().text().trim() ||
+          "아이보스";
+
+        // 날짜 추출 시도
+        const dateText = $(el).find(".date, .time, td.date, .regdate").first().text().trim();
+        let publishedAt: string | null = null;
+        if (dateText) {
+          try {
+            // "2026.04.01" 또는 "04.01" 형태 파싱
+            const dateMatch = dateText.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+            if (dateMatch) {
+              publishedAt = new Date(`${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`).toISOString();
+            }
+          } catch { /* 파싱 실패 시 null 유지 */ }
         }
 
-        // 요약 추출 시도
-        const snippet =
-          $(el).find(".summary, .desc, .description, p").first().text().trim().slice(0, 300) || null;
-
-        // 언론사명 추출 (아이보스 뉴스봇은 원본 언론사를 표시)
-        const sourceName =
-          $(el).find(".source, .media, .press").first().text().trim() || "아이보스";
-
         articles.push({
-          title: stripHtml(title),
+          title: stripHtml(rawTitle),
           link,
           source_name: sourceName,
-          thumbnail_url: thumbnailUrl,
-          snippet: snippet ? stripHtml(snippet) : null,
-          published_at: null, // 아이보스 페이지에서 시간 파싱이 어려우면 null
+          thumbnail_url: null, // 아이보스 게시판은 보통 썸네일 없음
+          snippet: null,       // 상세페이지 접근 없이 목록만 수집
+          published_at: publishedAt,
           feed_source: "iboss",
           category: IBOSS_CONFIG.category,
         });
+
+        count++;
       });
 
-      break; // 첫 번째로 매칭된 셀렉터로 진행
+      break; // 첫 번째 매칭 셀렉터로 충분
     }
 
     if (!foundItems) {
@@ -283,67 +362,55 @@ export async function scrapeIbossNews(): Promise<NewsArticle[]> {
 // ================================================================
 // 3. 통합 뉴스 수집 함수 (크론에서 호출)
 // ================================================================
-// 구글 뉴스 + 아이보스를 모두 돌려서 news_articles 형태로 반환
+// 구글 뉴스 RSS 6개 + 아이보스 HTML 1개 = 총 7개 소스
 
 export async function scrapeAllNews(): Promise<NewsArticle[]> {
-  console.log("[뉴스클리핑] ========== 전체 뉴스 수집 시작 ==========");
+  console.log("[뉴스클리핑] ========== 전체 뉴스 수집 시작 (7개 소스) ==========");
 
   const allArticles: NewsArticle[] = [];
+  const stats: Array<{ name: string; count: number }> = [];
 
-  // 1) 구글 뉴스 RSS (경제 + 기술)
+  // ─── 1) 구글 뉴스 RSS 6개 순차 수집 ───
   for (const feed of GOOGLE_NEWS_FEEDS) {
     try {
       const articles = await scrapeGoogleNews(feed);
       allArticles.push(...articles);
-      // 피드 사이에 약간의 딜레이
-      await randomJitter(300, 800);
+      stats.push({ name: feed.name, count: articles.length });
+      // 피드 간 딜레이 (구글 rate limit 방지)
+      await randomJitter(500, 1200);
     } catch (err) {
       console.error(`[뉴스클리핑] ${feed.name} 수집 중 에러:`, err);
+      stats.push({ name: feed.name, count: 0 });
     }
   }
 
-  // 2) 아이보스 마케팅 뉴스
+  // ─── 2) 아이보스 마케팅 뉴스/칼럼 ───
   try {
     const ibossArticles = await scrapeIbossNews();
     allArticles.push(...ibossArticles);
+    stats.push({ name: IBOSS_CONFIG.name, count: ibossArticles.length });
   } catch (err) {
     console.error("[뉴스클리핑] 아이보스 수집 중 에러:", err);
+    stats.push({ name: IBOSS_CONFIG.name, count: 0 });
   }
 
-  console.log(
-    `[뉴스클리핑] ========== 전체 수집 완료: ${allArticles.length}개 기사 ==========`
-  );
+  // ─── URL 기반 중복 제거 ───
+  const uniqueMap = new Map<string, NewsArticle>();
+  for (const article of allArticles) {
+    if (!uniqueMap.has(article.link)) {
+      uniqueMap.set(article.link, article);
+    }
+  }
+  const dedupedArticles = Array.from(uniqueMap.values());
+  const removedDupes = allArticles.length - dedupedArticles.length;
 
-  return allArticles;
-}
+  // ─── 수집 결과 로그 ───
+  console.log("[뉴스클리핑] ========== 수집 결과 요약 ==========");
+  for (const s of stats) {
+    console.log(`  ${s.name}: ${s.count}개`);
+  }
+  console.log(`  합계: ${allArticles.length}개 (중복 제거: ${removedDupes}개 → 최종: ${dedupedArticles.length}개)`);
+  console.log("[뉴스클리핑] ==========================================");
 
-// ================================================================
-// 4. AI 클러스터링 뼈대 (news_articles → news_clips 매핑)
-// ================================================================
-// 실제 LLM 호출은 Task 3에서 구현 — 여기서는 구조만 잡음
-
-export interface ClusteringResult {
-  headline: string;         // AI가 만든 핵심 헤드라인
-  summary: string;          // 3줄 요약
-  category: string;         // 카테고리
-  articleIds: string[];     // 이 클러스터에 소속된 news_articles.id 배열
-  thumbnailUrl: string | null;  // 대표 썸네일
-}
-
-// ─── 유사 기사 클러스터링 함수 (뼈대) ───
-// 입력: 아직 클러스터링되지 않은 기사 목록
-// 출력: 클러스터 배열 (각 클러스터 = 1개의 news_clip)
-//
-// [알고리즘 계획]
-// 1. 제목 유사도 기반 그룹핑 (TF-IDF 또는 LLM 임베딩)
-// 2. 같은 이벤트를 다루는 기사끼리 묶기
-// 3. 각 그룹에 대해 LLM으로 헤드라인 + 3줄 요약 생성
-// 4. 단독 기사도 1:1로 클립 생성 (중요도 낮게)
-export async function clusterAndSummarize(
-  _articles: Array<{ id: string; title: string; snippet: string | null; source_name: string; category: string }>
-): Promise<ClusteringResult[]> {
-  // TODO: Task 3에서 LLM 프롬프트와 함께 구현
-  // 현재는 빈 배열 반환 (뼈대만)
-  console.log("[뉴스클리핑] 클러스터링 함수 호출됨 (아직 뼈대만 구현)");
-  return [];
+  return dedupedArticles;
 }
