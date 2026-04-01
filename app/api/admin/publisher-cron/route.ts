@@ -20,7 +20,7 @@ import { rewriteArticle } from "@/lib/scrapers/rewriter";
 import { downloadAndUploadImages } from "@/lib/scrapers/image-uploader";
 import type { RewriterPersona } from "@/lib/scrapers/rewriter";
 import type { ScrapedArticle } from "@/lib/scrapers/types";
-import { SCRAPER_CATEGORY_MAP, SLUG_TO_LABEL, CATEGORY_COMMUNITY_MAP, getGeeknewsCategory } from "@/lib/constants";
+import { SCRAPER_CATEGORY_MAP, SLUG_TO_LABEL, CATEGORY_COMMUNITY_MAP, getGeeknewsCategory, matchKeywordToCommunity } from "@/lib/constants";
 
 // ─── KST 시간 유틸 ───
 function getKSTDate(): string {
@@ -350,7 +350,10 @@ async function runPublishJob(): Promise<PublishSummary> {
   const officialSlug = backlogItem.category === "geeknews"
     ? getGeeknewsCategory()
     : (SCRAPER_CATEGORY_MAP[backlogItem.category] || "free");
-  const communityId = CATEGORY_COMMUNITY_MAP[officialSlug] || null;
+  // 키워드 기반 커뮤니티 매핑 우선 → 없으면 카테고리 기반 매핑
+  // (예: "전기차", "테슬라" 포함 → 자동차매니아 커뮤니티로 자동 배치)
+  const keywordCommunityId = matchKeywordToCommunity(finalTitle, finalBody);
+  const communityId = keywordCommunityId || CATEGORY_COMMUNITY_MAP[officialSlug] || null;
   const postCategory = SLUG_TO_LABEL[officialSlug] || "자유";
 
   const postData: Record<string, unknown> = {

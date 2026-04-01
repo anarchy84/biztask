@@ -87,3 +87,229 @@ export const CATEGORY_COMMUNITY_MAP: Record<string, string | null> = {
   humor: null,
   ai: "e92e136f-df36-4c8c-a5ad-cb8d999649b9",          // 초급 Ai 실전 토론방
 };
+
+// ================================================================
+// 커뮤니티 활성화 시스템 (2026-04-01)
+// NPC들이 개별 커뮤니티에서도 활동하도록 하는 매핑/비중 설정
+// ================================================================
+
+// ─── 개별 커뮤니티 ID 상수 ───
+export const COMMUNITY_IDS = {
+  자동차매니아: "acc85d23-5cb1-43c9-a86b-96464a5e79d0",
+  마케팅연구소: "c5a698b8-8047-41cf-83cb-548eca27e2e1",
+  사업창업: "51c60f49-c1ba-407b-9de2-396657f15102",
+  AI토론방: "e92e136f-df36-4c8c-a5ad-cb8d999649b9",
+} as const;
+
+// ─── 활성 커뮤니티 목록 (랜덤 선택용) ───
+export const ACTIVE_COMMUNITIES = [
+  { id: COMMUNITY_IDS.자동차매니아, name: "자동차매니아", slug: "car-mania", topics: ["자동차", "전기차", "테슬라", "드라이브", "차량관리"] },
+  { id: COMMUNITY_IDS.마케팅연구소, name: "초보를 위한 마케팅 연구소", slug: "marketing-lab", topics: ["마케팅", "SNS", "광고", "퍼포먼스", "브랜딩"] },
+  { id: COMMUNITY_IDS.사업창업, name: "사업/창업 이야기", slug: "business-talk", topics: ["창업", "사업", "경영", "자금", "매출"] },
+  { id: COMMUNITY_IDS.AI토론방, name: "초급 AI 실전 토론방", slug: "ai-talk", topics: ["AI", "ChatGPT", "자동화", "프롬프트", "GPT"] },
+];
+
+// ─── NPC 페르소나 ↔ 커뮤니티 친화도 매핑 ───
+// communityWeight: 해당 NPC가 커뮤니티에 글 쓸 확률 (나머지는 글로벌)
+// preferred: 우선 활동 커뮤니티 ID 목록 (가중치 순)
+// 미등록 NPC는 기본값 적용 (글로벌 60% / 커뮤니티 40%)
+export const NPC_COMMUNITY_AFFINITY: Record<string, {
+  communityWeight: number;  // 0~1, 커뮤니티에 글 쓸 확률 (예: 0.7 = 70%)
+  preferred: { id: string; weight: number }[];  // 선호 커뮤니티 + 가중치
+}> = {
+  // ─── 자동차 친화 NPC ───
+  "벤츠타는궁수": {
+    communityWeight: 0.70,  // 자동차 커뮤니티 70% / 글로벌 30%
+    preferred: [
+      { id: COMMUNITY_IDS.자동차매니아, weight: 0.85 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.15 },
+    ],
+  },
+  // ─── 사업/경영 친화 NPC ───
+  "인사이트호소인": {
+    communityWeight: 0.50,
+    preferred: [
+      { id: COMMUNITY_IDS.사업창업, weight: 0.50 },
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.30 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.20 },
+    ],
+  },
+  "점주님": {
+    communityWeight: 0.45,
+    preferred: [
+      { id: COMMUNITY_IDS.사업창업, weight: 0.70 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.30 },
+    ],
+  },
+  "자영업은지옥": {
+    communityWeight: 0.50,
+    preferred: [
+      { id: COMMUNITY_IDS.사업창업, weight: 0.80 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.20 },
+    ],
+  },
+  "납품아재": {
+    communityWeight: 0.40,
+    preferred: [
+      { id: COMMUNITY_IDS.사업창업, weight: 0.70 },
+      { id: COMMUNITY_IDS.자동차매니아, weight: 0.30 },
+    ],
+  },
+  // ─── 마케팅 친화 NPC ───
+  "광고충": {
+    communityWeight: 0.50,
+    preferred: [
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.70 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.30 },
+    ],
+  },
+  "지표의노예": {
+    communityWeight: 0.45,
+    preferred: [
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.60 },
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.40 },
+    ],
+  },
+  "MZ사장": {
+    communityWeight: 0.45,
+    preferred: [
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.40 },
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.35 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.25 },
+    ],
+  },
+  // ─── AI 친화 NPC ───
+  "AGI만세": {
+    communityWeight: 0.60,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.90 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.10 },
+    ],
+  },
+  "헤비업로더": {
+    communityWeight: 0.55,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.80 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.20 },
+    ],
+  },
+  "프로불편러": {
+    communityWeight: 0.50,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.75 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.25 },
+    ],
+  },
+  "AI궁금한사장": {
+    communityWeight: 0.55,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.70 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.30 },
+    ],
+  },
+  "프롬프트좀요": {
+    communityWeight: 0.55,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.65 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.35 },
+    ],
+  },
+  "쉽게설명좀": {
+    communityWeight: 0.50,
+    preferred: [
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.80 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.20 },
+    ],
+  },
+  // ─── 유머/자유 중심 NPC (글로벌 비중 높음) ───
+  "에반참치": {
+    communityWeight: 0.20,  // 유머 80% 글로벌 / 커뮤니티 20%
+    preferred: [
+      { id: COMMUNITY_IDS.자동차매니아, weight: 0.40 },
+      { id: COMMUNITY_IDS.사업창업, weight: 0.30 },
+      { id: COMMUNITY_IDS.마케팅연구소, weight: 0.30 },
+    ],
+  },
+  "짤방사냥꾼": {
+    communityWeight: 0.20,
+    preferred: [
+      { id: COMMUNITY_IDS.자동차매니아, weight: 0.50 },
+      { id: COMMUNITY_IDS.AI토론방, weight: 0.50 },
+    ],
+  },
+  "편의점빌런": {
+    communityWeight: 0.25,
+    preferred: [
+      { id: COMMUNITY_IDS.사업창업, weight: 0.60 },
+      { id: COMMUNITY_IDS.자동차매니아, weight: 0.40 },
+    ],
+  },
+};
+
+// ─── NPC 커뮤니티 타겟 선택 헬퍼 ───
+// 페르소나 닉네임 기반으로 글로벌 vs 커뮤니티 결정 + 커뮤니티 ID 반환
+// 반환값: null이면 글로벌 피드, string이면 해당 커뮤니티 ID
+export function pickNpcCommunityTarget(nickname: string): string | null {
+  const affinity = NPC_COMMUNITY_AFFINITY[nickname];
+
+  // 미등록 NPC → 기본 40% 확률로 랜덤 커뮤니티
+  if (!affinity) {
+    if (Math.random() < 0.40) {
+      return pickRandom(ACTIVE_COMMUNITIES).id;
+    }
+    return null;
+  }
+
+  // 커뮤니티 활동 여부 결정 (communityWeight 확률)
+  if (Math.random() >= affinity.communityWeight) {
+    return null; // 글로벌 피드에 작성
+  }
+
+  // 선호 커뮤니티 중 가중치 기반 랜덤 선택
+  const roll = Math.random();
+  let cumulative = 0;
+  for (const pref of affinity.preferred) {
+    cumulative += pref.weight;
+    if (roll < cumulative) return pref.id;
+  }
+
+  // 폴백: 마지막 선호 커뮤니티
+  return affinity.preferred[affinity.preferred.length - 1]?.id || null;
+}
+
+// ─── 스크래퍼 키워드 → 커뮤니티 자동 매핑 ───
+// 제목/본문에 특정 키워드가 포함되면 해당 커뮤니티로 자동 배치
+export const KEYWORD_COMMUNITY_MAP: Array<{
+  keywords: string[];
+  communityId: string;
+  communityName: string;
+}> = [
+  {
+    keywords: ["전기차", "테슬라", "자동차", "현대차", "기아", "SUV", "자율주행", "EV", "하이브리드", "벤츠", "BMW", "아우디", "충전소"],
+    communityId: COMMUNITY_IDS.자동차매니아,
+    communityName: "자동차매니아",
+  },
+  {
+    keywords: ["ChatGPT", "GPT-5", "클로드", "제미나이", "LLM", "프롬프트", "오픈AI", "AI 에이전트", "RAG", "파인튜닝"],
+    communityId: COMMUNITY_IDS.AI토론방,
+    communityName: "초급 AI 실전 토론방",
+  },
+];
+
+// ─── 키워드 매칭 헬퍼: 제목+본문에서 커뮤니티 매칭 ───
+// 매칭되면 communityId, 아니면 null (기존 카테고리 매핑 유지)
+export function matchKeywordToCommunity(title: string, content: string): string | null {
+  const text = `${title} ${content}`.toLowerCase();
+  for (const mapping of KEYWORD_COMMUNITY_MAP) {
+    for (const kw of mapping.keywords) {
+      if (text.includes(kw.toLowerCase())) {
+        return mapping.communityId;
+      }
+    }
+  }
+  return null;
+}
+
+function pickRandom<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}

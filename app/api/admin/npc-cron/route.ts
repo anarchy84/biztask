@@ -13,7 +13,7 @@
 import { NextRequest } from "next/server";
 import { createAdminSupabaseClient } from "@/utils/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CATEGORY_LABELS } from "@/lib/constants";
+import { CATEGORY_LABELS, ACTIVE_COMMUNITIES, pickNpcCommunityTarget } from "@/lib/constants";
 
 // ─── 타입 정의 ───
 // persona_config: 어드민이 실시간 수정하는 동적 페르소나 설정 (JSONB)
@@ -644,19 +644,59 @@ async function executeNpcCron(
 
     await randomDelay();
 
-    // ═══ 게시글 작성 ═══
+    // ═══ 게시글 작성 (2026-04-01 v3 — 커뮤니티 타겟팅 + 자율 발제) ═══
+    // 글로벌 60% / 커뮤니티 40% 비중 (페르소나별 오버라이드 가능)
     if (actionType === "post") {
+      // ─── 1) 커뮤니티 타겟 결정 ───
+      // pickNpcCommunityTarget: 페르소나별 친화도 기반으로 글로벌 vs 커뮤니티 결정
+      const targetCommunityId = pickNpcCommunityTarget(persona.nickname);
+      const targetCommunity = targetCommunityId
+        ? ACTIVE_COMMUNITIES.find((c) => c.id === targetCommunityId)
+        : null;
+
+      // ─── 2) 카테고리 선택 ───
       const category = pickRandom(CATEGORIES);
+
+      // ─── 3) AI 프롬프트 생성 (글로벌 vs 커뮤니티 분기) ───
       const systemPrompt = buildDynamicSystemPrompt(persona, 80);
-      const aiResult = await generateWithAI(
-        apiKey,
-        systemPrompt,
-        `비즈니스 커뮤니티 '그릿(Grit)'에 올릴 '${category}' 카테고리 글을 작성해.\n` +
-        `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
-        `분량: 제목 15~25자, 본문 80~200자.\n` +
-        `내용: 네 업종(${persona.industry})과 관심사(${(persona.core_interests || []).slice(0, 4).join(", ")})에서 실제로 겪을 법한 일화.\n` +
-        `금지: "기본기가 중요", ChatGPT 말투.`
-      );
+      let userPrompt: string;
+
+      if (targetCommunity) {
+        // ── 커뮤니티 대상: 자율 발제 프롬프트 ──
+        // 50% 확률로 일상/경험담, 50% 확률로 질문/토론형
+        const isQuestion = Math.random() < 0.50;
+        const communityTopics = targetCommunity.topics.join(", ");
+
+        if (isQuestion) {
+          userPrompt =
+            `'${targetCommunity.name}' 커뮤니티에 올릴 질문/토론 글을 작성해.\n` +
+            `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
+            `분량: 제목 15~25자, 본문 60~150자.\n` +
+            `내용: ${communityTopics} 관련해서 다른 멤버들에게 의견을 물어보는 글.\n` +
+            `네 업종(${persona.industry})과 경험을 바탕으로 자연스럽게 질문해.\n` +
+            `금지: "기본기가 중요", 교과서 말투, ChatGPT 말투.\n` +
+            `예시 톤: "요즘 ~어떠세요?", "~해보신 분?", "~추천 좀요"`;
+        } else {
+          userPrompt =
+            `'${targetCommunity.name}' 커뮤니티에 올릴 일상/경험담 글을 작성해.\n` +
+            `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
+            `분량: 제목 15~25자, 본문 80~200자.\n` +
+            `내용: ${communityTopics} 관련해서 최근 겪은 에피소드나 느낀 점.\n` +
+            `네 업종(${persona.industry})과 관심사(${(persona.core_interests || []).slice(0, 3).join(", ")})에서 자연스럽게.\n` +
+            `금지: "기본기가 중요", 교과서 말투, ChatGPT 말투.\n` +
+            `예시 톤: "오늘 ~했는데 대박", "~해봤더니 완전", "이거 나만 그런가"`;
+        }
+      } else {
+        // ── 글로벌 대상: 기존 로직 ──
+        userPrompt =
+          `비즈니스 커뮤니티 '그릿(Grit)'에 올릴 '${category}' 카테고리 글을 작성해.\n` +
+          `형식: 첫 줄에 제목만, 둘째 줄부터 본문.\n` +
+          `분량: 제목 15~25자, 본문 80~200자.\n` +
+          `내용: 네 업종(${persona.industry})과 관심사(${(persona.core_interests || []).slice(0, 4).join(", ")})에서 실제로 겪을 법한 일화.\n` +
+          `금지: "기본기가 중요", ChatGPT 말투.`;
+      }
+
+      const aiResult = await generateWithAI(apiKey, systemPrompt, userPrompt);
 
       if (aiResult.text) {
         const lines = aiResult.text.trim().split("\n");
@@ -664,9 +704,20 @@ async function executeNpcCron(
         const content = lines.slice(1).join("\n").trim();
 
         if (title && content) {
-          const { error } = await supabase
-            .from("posts")
-            .insert({ author_id: persona.user_id, title, content, category, upvotes: 0, comment_count: 0 });
+          // ─── 4) DB INSERT (community_id 포함) ───
+          const postData: Record<string, unknown> = {
+            author_id: persona.user_id,
+            title,
+            content,
+            category,
+            upvotes: 0,
+            comment_count: 0,
+          };
+          if (targetCommunityId) {
+            postData.community_id = targetCommunityId;
+          }
+
+          const { error } = await supabase.from("posts").insert(postData);
 
           if (!error) {
             await supabase
@@ -678,13 +729,14 @@ async function executeNpcCron(
               })
               .eq("id", persona.id);
 
+            const targetLabel = targetCommunity ? `🏠${targetCommunity.name}` : "글로벌";
             summary.executed++;
             summary.posts++;
             summary.details?.push({
               action: "post",
               persona: persona.nickname,
               success: true,
-              detail: `[${category}] "${title}"`,
+              detail: `[${targetLabel}][${category}] "${title}"`,
               provider: aiResult.provider,
             });
           } else {
