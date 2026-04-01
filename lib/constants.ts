@@ -52,15 +52,16 @@ export const SCRAPER_CATEGORY_MAP: Record<string, string> = {
   // geeknews는 고정 매핑 없음 → getGeeknewsCategory()로 랜덤 매핑
 };
 
-// ─── 긱뉴스 전용 랜덤 카테고리 배분 (2026-03-31 조정) ───
-// 긱뉴스는 AI/기술 뉴스 → 대부분 AI 토론방으로 배분
-// AI 70% / 자유 10% / 사업 10% / 마케팅 10%
+// ─── 긱뉴스 전용 랜덤 카테고리 배분 (2026-04-01 조정) ───
+// 긱뉴스는 AI/기술 뉴스 소스
+// AI 50% / 마케팅 20% / 사업 20% / 자유 10%
+// → AI 정체성 유지 + 마케팅/사업 보조 공급원 역할
 export function getGeeknewsCategory(): string {
   const rand = Math.random() * 100;
-  if (rand < 70) return "ai";         // 70% → AI 토론방
-  if (rand < 80) return "free";       // 10%
-  if (rand < 90) return "business";   // 10%
-  return "marketing";                  // 10%
+  if (rand < 50) return "ai";         // 50% → AI 토론방
+  if (rand < 70) return "marketing";  // 20% → 마케팅/사업 25% 목표 보조
+  if (rand < 90) return "business";   // 20%
+  return "free";                       // 10%
 }
 
 // ─── 카테고리별 UI 색상 (배경 + 텍스트) ───

@@ -926,6 +926,7 @@ async function executeNpcCron(
         if (p.upvotes >= 3) w *= 3;                                         // 인기글 3배
         else if (p.upvotes >= 1) w *= 2;                                    // 추천 1개 이상 2배
         if (idx < Math.floor(allPosts.length * 0.3)) w *= 2;               // 최신글 2배
+        if (p.category === "유머" || p.category === "humor") w *= 2;        // 유머 글 2배 (트래픽 부스트)
         return { post: p, weight: w };
       });
       const totalW = weighted.reduce((s, x) => s + x.weight, 0);

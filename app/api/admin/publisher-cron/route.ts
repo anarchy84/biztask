@@ -116,15 +116,45 @@ async function runPublishJob(): Promise<PublishSummary> {
   }
 
   // ================================================================
-  // STEP 1: 창고에서 미발행 글 1개 가져오기 (오래된 것부터)
+  // STEP 1: 창고에서 미발행 글 1개 가져오기
+  // 유머 우선 발행: 60% 확률로 유머 글을 먼저 시도 → 없으면 일반 순서
+  // 트래픽 극대화를 위해 유머 콘텐츠가 가장 빈번하게 올라오도록 우선순위 적용
   // ================================================================
-  const { data: backlogItem, error: fetchError } = await supabase
-    .from("content_backlog")
-    .select("*")
-    .eq("is_published", false)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .single();
+  let backlogItem = null;
+  let fetchError = null;
+
+  // 60% 확률로 유머 글 우선 발행 시도
+  const humorPriority = Math.random() < 0.60;
+  if (humorPriority) {
+    const { data: humorItem, error: humorErr } = await supabase
+      .from("content_backlog")
+      .select("*")
+      .eq("is_published", false)
+      .eq("category", "humor")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .single();
+
+    if (!humorErr && humorItem) {
+      backlogItem = humorItem;
+      console.log("[Publisher] 유머 우선 발행 적용 — 유머 글 선택됨");
+    } else {
+      console.log("[Publisher] 유머 우선 발행 시도했으나 유머 글 없음 → 일반 순서 fallback");
+    }
+  }
+
+  // 유머 우선이 아니거나, 유머 글이 없으면 일반 순서 (오래된 것부터)
+  if (!backlogItem) {
+    const { data: normalItem, error: normalErr } = await supabase
+      .from("content_backlog")
+      .select("*")
+      .eq("is_published", false)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .single();
+    backlogItem = normalItem;
+    fetchError = normalErr;
+  }
 
   if (fetchError || !backlogItem) {
     console.log("[Publisher] 창고에 미발행 글 없음 — 대기");
