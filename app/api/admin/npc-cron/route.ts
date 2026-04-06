@@ -620,26 +620,24 @@ async function executeNpcCron(
       continue;
     }
 
-    // 4. 행동 유형 결정 (2026-04-01 v2 — 대댓글 + 댓글투표 추가)
-    // 게시글보팅 30% → 댓글 25% → 대댓글 15% → 댓글투표 20% → 게시글 10%
-    // 대댓글과 댓글투표가 추가되어 리얼리티 극대화
+    // 4. 행동 유형 결정 (2026-04-06 v3 — 댓글 7 : 글 3 비율)
+    // 댓글계열 70% (댓글 35% + 대댓글 20% + 댓글투표 15%) → 글 30%
+    // 보팅은 글 작성 내부에서 자연 발생하므로 별도 할당 불요
     let actionType: "post" | "comment" | "vote" | "reply" | "comment_vote" = "vote";
     const roll = Math.random();
 
-    if (canLike && roll < 0.30) {
-      actionType = "vote";
+    if (canComment && roll < 0.35) {
+      actionType = "comment";       // 35% 댓글
     } else if (canComment && roll < 0.55) {
-      actionType = "comment";
-    } else if (canComment && roll < 0.70) {
-      actionType = "reply";         // 대댓글 (댓글 할당량 공유)
-    } else if (canLike && roll < 0.90) {
-      actionType = "comment_vote";  // 댓글 좋아요/싫어요 (추천 할당량 공유)
-    } else if (canPost) {
-      actionType = "post";
-    } else if (canLike) {
-      actionType = "vote";
+      actionType = "reply";         // 20% 대댓글
+    } else if (canLike && roll < 0.70) {
+      actionType = "comment_vote";  // 15% 댓글 투표
+    } else if (canPost && roll < 1.00) {
+      actionType = "post";          // 30% 글 작성
     } else if (canComment) {
       actionType = "comment";
+    } else if (canLike) {
+      actionType = "vote";
     }
 
     await randomDelay();
@@ -654,8 +652,20 @@ async function executeNpcCron(
         ? ACTIVE_COMMUNITIES.find((c) => c.id === targetCommunityId)
         : null;
 
-      // ─── 2) 카테고리 선택 ───
-      const category = pickRandom(CATEGORIES);
+      // ─── 2) 카테고리 선택 (2026-04-06 가중치 적용) ───
+      // 유머 70% / AI 10% / 사업·마케팅 10% / 자동차(자유) 10%
+      const catRoll = Math.random();
+      let category: string;
+      if (catRoll < 0.70) {
+        category = "유머";
+      } else if (catRoll < 0.80) {
+        category = "AI";
+      } else if (catRoll < 0.90) {
+        // 사업/마케팅 반반
+        category = Math.random() < 0.5 ? "사업" : "마케팅";
+      } else {
+        category = "자유"; // 자동차 관련은 자유 카테고리 + 자동차매니아 커뮤니티로
+      }
 
       // ─── 3) AI 프롬프트 생성 (글로벌 vs 커뮤니티 분기) ───
       const systemPrompt = buildDynamicSystemPrompt(persona, 80);
