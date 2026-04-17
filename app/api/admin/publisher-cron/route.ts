@@ -117,14 +117,15 @@ async function runPublishJob(): Promise<PublishSummary> {
 
   // ================================================================
   // STEP 1: 창고에서 미발행 글 1개 가져오기
-  // 유머 우선 발행: 60% 확률로 유머 글을 먼저 시도 → 없으면 일반 순서
+  // 유머 우선 발행: 80% 확률로 유머 글을 먼저 시도 → 없으면 일반 순서
+  // 2026-04-17 개정: 유머 60% → 80% (활어 커뮤니티 정체성 강화)
   // 트래픽 극대화를 위해 유머 콘텐츠가 가장 빈번하게 올라오도록 우선순위 적용
   // ================================================================
   let backlogItem = null;
   let fetchError = null;
 
-  // 60% 확률로 유머 글 우선 발행 시도
-  const humorPriority = Math.random() < 0.60;
+  // 80% 확률로 유머 글 우선 발행 시도
+  const humorPriority = Math.random() < 0.80;
   if (humorPriority) {
     const { data: humorItem, error: humorErr } = await supabase
       .from("content_backlog")

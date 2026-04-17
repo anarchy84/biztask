@@ -1360,6 +1360,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // ─── 2026-04-17: 활어 엔진 도입으로 통합 cron 비활성화 스위치 ───
+  // comment-bot + vote-bot + publisher-cron 3개 독립 cron으로 대체됨
+  // Vercel 환경변수에 DISABLE_NPC_CRON=true 설정하면 이 통합 cron은 스킵됨
+  // (cron-job.org 스케줄 수정 없이도 즉시 비활성화 가능)
+  if (process.env.DISABLE_NPC_CRON === "true") {
+    return Response.json({
+      success: true,
+      disabled: true,
+      message: "NPC Cron은 비활성화됨 (DISABLE_NPC_CRON=true). comment-bot/vote-bot/publisher-cron으로 대체됨.",
+    });
+  }
+
   const kstHour = getKSTHour();
   const currentDate = getKSTDate();
 
