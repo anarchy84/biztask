@@ -3,18 +3,18 @@
 // ▣ 이 화면이 하는 일:
 //   - 상단 헤더 (로고 GRIT + 알림 아이콘)
 //   - 횡스크롤 카테고리 탭 (전체/실시간/유머/고민/질문/꿀팁)
-//   - 세로 피드 리스트 (PostCard 반복)
+//   - 세로 피드 리스트 (PostCard 반복) + Pull-to-refresh
 //   - 우하단 FAB (글쓰기 버튼)
 //
 // ▣ 데이터:
-//   - 지금은 mockPosts 상수 사용 (Phase 1: UI만 잡기 위한 목업 데이터)
-//   - Phase 2에서 Supabase + Realtime 구독으로 교체 예정
+//   - usePosts(category) 훅으로 Supabase에서 실시간 조회
+//   - NPC·실유저 글 섞여서 최신순/인기순으로 표시
 //
 // ▣ 실행 방법:
 //   - Expo Router v4 기준: app/(tabs)/index.tsx 경로면 자동으로 첫 탭이 됨
 //   - npx expo start → 시뮬레이터/실기기 연결
 
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import {
   View,
   Text,
@@ -24,82 +24,14 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native'
 import { router } from 'expo-router'
-import { Post, Category, CATEGORY_LABELS } from '@/lib/types'
+import { Category, CATEGORY_LABELS } from '@/lib/types'
 import { colors } from '@/constants/colors'
 import PostCard from '@/components/feed/PostCard'
-
-// ─────────────────────────────────────────────
-// 한글 주석: 목업 데이터 (Phase 1 UI 확인용)
-//   - Phase 2에서 Supabase fetch로 교체.
-//   - NPC 닉네임은 실제 NPC 21명 중 일부 차용.
-// ─────────────────────────────────────────────
-
-const mockPosts: Post[] = [
-  {
-    id: '1',
-    author: { id: 'n1', nickname: '김치찌개사장', industry: 'food', isNpc: true },
-    category: 'worry',
-    title: '오늘 진상 한 명 왔는데 듣다가 혈압 오름',
-    body: '반찬 더 달라고 소리 지르길래 줬더니 이번엔 왜 이렇게 느리냐고… 사장님들 이럴 때 어떻게 대응하세요 진짜 궁금',
-    likeCount: 48,
-    dislikeCount: 2,
-    commentCount: 32,
-    viewCount: 1234,
-    createdAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-    myReaction: 'like',
-  },
-  {
-    id: '2',
-    author: { id: 'n2', nickname: '월세공주', industry: 'cafe', isNpc: true },
-    category: 'question',
-    title: '임대료 올려달라는 건물주한테 한마디 해주는 법',
-    body: '2년 계약 만료인데 30% 올려달라는 게 상식적인지… 주변 시세 자료 정리해서 협상 들어가려고 합니다',
-    thumbnailUrl: 'https://picsum.photos/seed/grit2/200/200',
-    likeCount: 23,
-    dislikeCount: 0,
-    commentCount: 17,
-    viewCount: 842,
-    createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '3',
-    author: { id: 'n3', nickname: '네이버스토어찜', industry: 'online', isNpc: true },
-    category: 'tip',
-    title: '스마트스토어 리뷰 이벤트 반응 좋았던 후기 공유',
-    body: '별점 5개 남기면 다음 주문 3천원 할인 쿠폰 보내드렸는데 생각보다 전환율이 2배 뛰었어요',
-    likeCount: 91,
-    dislikeCount: 1,
-    commentCount: 46,
-    viewCount: 3124,
-    createdAt: new Date(Date.now() - 42 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '4',
-    author: { id: 'n4', nickname: '눈썹장인', industry: 'beauty', isNpc: true },
-    category: 'worry',
-    title: '네이버 예약 취소하면서 환불까지 요구하는 손님',
-    body: '당일 취소 정책 공지 다 해놨는데 별점 1점 협박… 어떻게 대응해야 맞을까요 진심 조언 부탁',
-    likeCount: 67,
-    dislikeCount: 3,
-    commentCount: 29,
-    viewCount: 1802,
-    createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: '5',
-    author: { id: 'n5', nickname: '유통창고형', industry: 'retail', isNpc: true },
-    category: 'humor',
-    title: '창고 정리하다 5년 묵은 재고 발견함 ㅋㅋ',
-    body: '박스 열었더니 2021년 스티커 그대로… 이거 지금 팔면 빈티지냐 폐기냐 진짜 고민됩니다',
-    likeCount: 156,
-    dislikeCount: 0,
-    commentCount: 73,
-    viewCount: 5421,
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-]
+import { usePosts } from '@/lib/hooks/usePosts'
 
 // ─────────────────────────────────────────────
 // 한글 주석: 카테고리 탭 순서 (상단 횡스크롤용)
@@ -114,17 +46,8 @@ export default function HomeFeedScreen() {
   // 한글 주석: 선택된 카테고리 상태 (기본 '전체')
   const [activeCategory, setActiveCategory] = useState<Category>('all')
 
-  // 한글 주석: 카테고리 필터 적용된 피드
-  //   - 'all' → 전부
-  //   - 'hot' → 좋아요 많은 순 (Phase 2에서 조회수·댓글 가중치로 교체)
-  //   - 나머지 → 해당 category 매칭
-  const filteredPosts = useMemo(() => {
-    if (activeCategory === 'all') return mockPosts
-    if (activeCategory === 'hot') {
-      return [...mockPosts].sort((a, b) => b.likeCount - a.likeCount)
-    }
-    return mockPosts.filter((p) => p.category === activeCategory)
-  }, [activeCategory])
+  // 한글 주석: Supabase에서 피드 조회 (카테고리 바뀌면 자동 재조회)
+  const { posts, loading, refreshing, error, refresh } = usePosts(activeCategory)
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -167,28 +90,55 @@ export default function HomeFeedScreen() {
         </ScrollView>
       </View>
 
-      {/* 피드 리스트 */}
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <PostCard
-            post={item}
-            onPress={() => router.push(`/post/${item.id}` as any)}
-          />
-        )}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>아직 게시글이 없어요</Text>
-          </View>
-        }
-        // 한글 주석: FlatList 기본 성능 튜닝
-        //   - initialNumToRender: 처음에 렌더할 개수
-        //   - maxToRenderPerBatch: 한 번에 렌더할 개수
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={10}
-      />
+      {/* 한글 주석: 첫 로딩 시엔 스피너, 이후엔 리스트 */}
+      {loading && posts.length === 0 ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={colors.brand} />
+          <Text style={styles.loadingText}>피드 불러오는 중…</Text>
+        </View>
+      ) : error && posts.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.errorTitle}>피드 로딩 실패</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryBtn} onPress={refresh}>
+            <Text style={styles.retryText}>다시 시도</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          keyExtractor={(p) => p.id}
+          renderItem={({ item }) => (
+            <PostCard
+              post={item}
+              onPress={() => router.push(`/post/${item.id}` as any)}
+            />
+          )}
+          // 한글 주석: Pull-to-refresh (아래로 당기면 새로고침)
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refresh}
+              tintColor={colors.brand}
+              colors={[colors.brand]}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>
+                {activeCategory === 'all'
+                  ? '아직 게시글이 없어'
+                  : `${CATEGORY_LABELS[activeCategory]} 게시글이 없어`}
+              </Text>
+              <Text style={styles.emptyHint}>첫 글 써보는 건 어때?</Text>
+            </View>
+          }
+          // 한글 주석: FlatList 기본 성능 튜닝
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={10}
+        />
+      )}
 
       {/* 한글 주석: 우하단 FAB (글쓰기) */}
       <Pressable
@@ -266,15 +216,66 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
     borderRadius: 1,
   },
+  // ─────────────────────────────────────────────
+  // 로딩/에러 중앙 박스
+  // ─────────────────────────────────────────────
+  centerBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontFamily: 'Pretendard-Regular',
+  },
+  errorTitle: {
+    fontSize: 16,
+    color: colors.textStrong,
+    fontFamily: 'Pretendard-SemiBold',
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontFamily: 'Pretendard-Regular',
+    textAlign: 'center',
+  },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: colors.brand,
+    borderRadius: 8,
+  },
+  retryText: {
+    fontSize: 14,
+    color: colors.textStrong,
+    fontFamily: 'Pretendard-SemiBold',
+  },
+  // ─────────────────────────────────────────────
+  // 빈 상태
+  // ─────────────────────────────────────────────
   empty: {
     padding: 48,
     alignItems: 'center',
+    gap: 6,
   },
   emptyText: {
     fontSize: 14,
     color: colors.textMuted,
     fontFamily: 'Pretendard-Regular',
   },
+  emptyHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontFamily: 'Pretendard-Regular',
+    opacity: 0.7,
+  },
+  // ─────────────────────────────────────────────
+  // FAB
+  // ─────────────────────────────────────────────
   fab: {
     position: 'absolute',
     right: 16,
