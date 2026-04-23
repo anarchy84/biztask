@@ -1,0 +1,36 @@
+# 한글 주석: Expo 기본 무시 목록 + GRIT 앱 추가 항목
+
+# 빌드 산출물
+node_modules/
+.expo/
+dist/
+web-build/
+.next/
+
+# 네이티브 빌드
+ios/
+android/
+
+# 환경변수·비밀
+.env
+.env.local
+.env.*.local
+
+# 시스템 파일
+.DS_Store
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# TypeScript
+*.tsbuildinfo
+expo-env.d.ts
+
+# Metro
+.metro-health-check*
+
+# 테스트
+coverage/

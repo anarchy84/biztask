@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "GRIT",
+    "slug": "grit-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "grit",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "kr.grit.app"
+    },
+    "android": {
+      "package": "kr.grit.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#97C93A"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
