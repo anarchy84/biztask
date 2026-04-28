@@ -4,7 +4,7 @@
     "slug": "grit-app",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "scheme": "grit",
     "ios": {
@@ -18,7 +18,7 @@
     "android": {
       "package": "kr.grit.app",
       "adaptiveIcon": {
-        "backgroundColor": "#97C93A"
+        "backgroundColor": "#059669"
       }
     },
     "web": {

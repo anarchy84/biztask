@@ -1,197 +1,250 @@
-// 한글 주석: 알림 탭 화면 (Phase 1 placeholder)
-//
-// ▣ Phase 1: 목업 알림 3개만 표시
-// ▣ Phase 2 예정 기능:
-//   - Supabase Realtime으로 댓글·좋아요 실시간 수신
-//   - expo-notifications로 푸시 알림
-//   - 읽음/안읽음 상태 관리
+// 한글 주석: V2 알림 화면
 
-import React from 'react'
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Pressable,
-} from 'react-native'
+import React, { useState } from 'react'
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Avatar } from '@/components/common/Avatar'
+import { VerifiedBadge } from '@/components/common/Badge'
 import { colors } from '@/constants/colors'
-import TimeAgo from '@/components/common/TimeAgo'
+import { radius, spacing } from '@/constants/spacing'
+import { typography } from '@/constants/typography'
 
-type NotiType = 'comment' | 'like' | 'reply'
+type Filter = 'all' | 'follow' | 'mention' | 'match'
+type NoticeType = 'quote' | 'follow' | 'like' | 'match' | 'comment' | 'milestone'
 
-interface Noti {
-  id: string
-  type: NotiType
-  title: string
-  preview: string
-  createdAt: string
-  unread: boolean
-}
-
-const mockNotis: Noti[] = [
-  {
-    id: 'n1',
-    type: 'comment',
-    title: '카페사장15년차님이 댓글을 남겼어요',
-    preview: '저는 그냥 "죄송합니다" 세 번 하고 마음속으로 별점 1점…',
-    createdAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    unread: true,
-  },
-  {
-    id: 'n2',
-    type: 'like',
-    title: '유통창고형님 외 47명이 내 글을 좋아해요',
-    preview: '"오늘 진상 한 명 왔는데 듣다가 혈압 오름"',
-    createdAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-    unread: true,
-  },
-  {
-    id: 'n3',
-    type: 'reply',
-    title: '온라인셀러박님이 답글을 달았어요',
-    preview: 'CCTV 있으시면 녹화 돌려두세요. 진상은 언제든 또…',
-    createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    unread: false,
-  },
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all', label: '전체' },
+  { key: 'follow', label: '팔로우' },
+  { key: 'mention', label: '멘션' },
+  { key: 'match', label: '매칭' },
 ]
 
-const TYPE_ICON: Record<NotiType, string> = {
-  comment: '💬',
-  like: '♥',
-  reply: '↩',
-}
+const ITEMS = [
+  { id: '1', type: 'quote' as NoticeType, who: '을지로프린스', text: '님이 회원님 글을 인용했어요.', preview: 'POS 교체 후기 진심 공감', time: '2분 전', unread: true, verified: true },
+  { id: '2', type: 'follow' as NoticeType, who: '강남숯불왕', text: '님이 회원님을 팔로우합니다.', time: '15분 전', unread: true, verified: true },
+  { id: '3', type: 'like' as NoticeType, who: '까칠한여우 외 24명', text: '이 회원님 글을 좋아합니다.', preview: '임대료 협상 후기 공유합니다...', time: '1시간 전', unread: false },
+  { id: '4', type: 'match' as NoticeType, who: 'B2B 매칭', text: ' · 신선육 도매업체에서 제안이 도착했어요.', time: '3시간 전', unread: false },
+  { id: '5', type: 'comment' as NoticeType, who: '리테일러7', text: '님이 댓글을 남겼어요.', preview: '저희 가게도 비슷한 상황이라 공유 감사합니다', time: '5시간 전', unread: false },
+  { id: '6', type: 'milestone' as NoticeType, who: '그릿 지수가 90을 돌파했어요', text: '', time: '어제', unread: false },
+]
 
 export default function NotificationsScreen() {
+  const [filter, setFilter] = useState<Filter>('all')
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>알림</Text>
-        <Pressable>
-          <Text style={styles.headerAction}>모두 읽음</Text>
+        <Text style={styles.title}>알림</Text>
+        <Pressable style={styles.readAll} accessibilityRole="button">
+          <Text style={styles.readAllText}>모두 읽음</Text>
         </Pressable>
       </View>
 
-      <ScrollView>
-        {mockNotis.map((noti) => (
-          <Pressable key={noti.id} style={styles.item}>
-            <View style={[styles.iconWrap, noti.unread && styles.iconWrapUnread]}>
-              <Text style={[styles.icon, noti.type === 'like' && styles.iconLike]}>
-                {TYPE_ICON[noti.type]}
-              </Text>
-            </View>
-            <View style={styles.itemBody}>
-              <Text
-                style={[styles.itemTitle, noti.unread && styles.itemTitleUnread]}
-                numberOfLines={1}
-              >
-                {noti.title}
-              </Text>
-              <Text style={styles.itemPreview} numberOfLines={1}>
-                {noti.preview}
-              </Text>
-              <TimeAgo date={noti.createdAt} style={styles.itemTime} />
-            </View>
-            {noti.unread && <View style={styles.dot} />}
+      <View style={styles.filterRow}>
+        {FILTERS.map((item) => (
+          <Pressable
+            key={item.key}
+            style={[styles.chip, filter === item.key && styles.chipActive]}
+            onPress={() => setFilter(item.key)}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.chipText, filter === item.key && styles.chipTextActive]}>
+              {item.label}
+            </Text>
           </Pressable>
         ))}
+      </View>
 
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>여기까지가 최근 알림이야</Text>
-        </View>
-      </ScrollView>
+      <FlatList
+        data={ITEMS}
+        keyExtractor={(item) => item.id}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={styles.list}
+        renderItem={({ item }) => <NoticeRow item={item} />}
+        ListFooterComponent={<Text style={styles.footerText}>여기까지가 최근 알림이야</Text>}
+      />
     </SafeAreaView>
   )
+}
+
+function NoticeRow({ item }: { item: (typeof ITEMS)[number] }) {
+  const tone = toneFor(item.type)
+  return (
+    <Pressable style={[styles.row, item.unread && styles.rowUnread]} accessibilityRole="button">
+      {item.unread ? <View style={styles.unreadDot} /> : null}
+      <View style={[styles.iconCircle, { borderColor: tone }]}>
+        <Text style={[styles.iconText, { color: tone }]}>{iconFor(item.type)}</Text>
+      </View>
+      <View style={styles.rowBody}>
+        <View style={styles.rowTitleLine}>
+          <Text style={styles.who} numberOfLines={1}>{item.who}</Text>
+          {item.verified ? <VerifiedBadge size={14} /> : null}
+          <Text style={styles.actionText}>{item.text}</Text>
+        </View>
+        {item.preview ? (
+          <View style={[styles.previewBox, { borderLeftColor: tone }]}>
+            <Text style={styles.previewText} numberOfLines={2}>{item.preview}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.timeText}>{item.time}</Text>
+      </View>
+      <Avatar nickname={item.who} size={32} />
+    </Pressable>
+  )
+}
+
+function iconFor(type: NoticeType): string {
+  return {
+    quote: '“',
+    follow: '+',
+    like: '♥',
+    match: '◇',
+    comment: '…',
+    milestone: '✦',
+  }[type]
+}
+
+function toneFor(type: NoticeType): string {
+  return {
+    quote: colors.semantic.verify,
+    follow: colors.semantic.verify,
+    like: colors.semantic.like,
+    match: colors.brand[400],
+    comment: colors.text.secondary,
+    milestone: colors.brand[300],
+  }[type]
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   header: {
-    height: 52,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing[4],
   },
-  headerTitle: {
-    fontSize: 16,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+  title: {
+    ...typography.heading2,
+    color: colors.text.primary,
   },
-  headerAction: {
-    fontSize: 12,
-    fontFamily: 'Pretendard-Medium',
-    color: colors.textBrand,
+  readAll: {
+    minHeight: 48,
+    justifyContent: 'center',
   },
-  item: {
+  readAllText: {
+    ...typography.metaEmphasis,
+    color: colors.brand[400],
+  },
+  filterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    gap: spacing[2],
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: 12,
+    borderBottomColor: colors.line.subtle,
   },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.bgMuted,
+  chip: {
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line.default,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconWrapUnread: {
-    backgroundColor: colors.bgBrandSoft,
+  chipActive: {
+    backgroundColor: colors.bg.raised,
+    borderColor: colors.brand[600],
   },
-  icon: {
-    fontSize: 16,
-    color: colors.textPrimary,
+  chipText: {
+    ...typography.label,
+    color: colors.text.tertiary,
   },
-  iconLike: {
-    color: colors.like,
+  chipTextActive: {
+    color: colors.brand[300],
   },
-  itemBody: {
-    flex: 1,
-    gap: 2,
+  list: {
+    paddingHorizontal: spacing[3],
+    paddingBottom: 112,
   },
-  itemTitle: {
-    fontSize: 13,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textPrimary,
+  row: {
+    minHeight: 86,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing[3],
+    padding: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line.subtle,
+    borderRadius: radius.md,
   },
-  itemTitleUnread: {
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+  rowUnread: {
+    backgroundColor: colors.bg.surface,
   },
-  itemPreview: {
-    fontSize: 12,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+  unreadDot: {
+    position: 'absolute',
+    left: spacing[1],
+    top: spacing[4],
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.brand[400],
   },
-  itemTime: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
-    marginTop: 2,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.brand,
-  },
-  empty: {
-    padding: 32,
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: colors.bg.raised,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  emptyText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+  iconText: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing[1],
+  },
+  rowTitleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing[1],
+  },
+  who: {
+    ...typography.metaEmphasis,
+    color: colors.text.primary,
+    maxWidth: 160,
+  },
+  actionText: {
+    ...typography.meta,
+    color: colors.text.secondary,
+  },
+  previewBox: {
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[2],
+    borderRadius: radius.sm,
+    borderLeftWidth: 2,
+    backgroundColor: colors.bg.raised,
+  },
+  previewText: {
+    ...typography.meta,
+    color: colors.text.tertiary,
+  },
+  timeText: {
+    ...typography.caption,
+    color: colors.text.disabled,
+  },
+  footerText: {
+    ...typography.caption,
+    color: colors.text.disabled,
+    textAlign: 'center',
+    paddingVertical: spacing[8],
   },
 })

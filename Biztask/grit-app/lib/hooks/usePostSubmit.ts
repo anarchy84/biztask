@@ -30,7 +30,11 @@ export interface PostSubmitInput {
   title: string
   body: string
   category: WritableCategory
-  imageUrl?: string | null  // Phase 3에서 활성화 예정
+  imageUrl?: string | null
+  imageUrls?: string[]
+  videoUrl?: string | null
+  videoThumbnailUrl?: string | null
+  quotedPostId?: string | null
 }
 
 export interface UsePostSubmitArgs {
@@ -96,15 +100,20 @@ export function usePostSubmit({
             title,
             body,
             category: input.category,
-            image_url: input.imageUrl ?? null,
+            image_url: input.imageUrl ?? input.imageUrls?.[0] ?? null,
+            image_urls: input.imageUrls ?? (input.imageUrl ? [input.imageUrl] : []),
+            video_url: input.videoUrl ?? null,
+            video_thumbnail_url: input.videoThumbnailUrl ?? null,
+            quoted_post_id: input.quotedPostId ?? null,
+            is_quote: Boolean(input.quotedPostId),
           })
-          .select('*, author:profiles!author_id(*)')
+          .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
           .single()
 
         if (insErr) throw new Error(insErr.message)
         if (!data) throw new Error('글 저장 결과를 받지 못했어')
 
-        const mapped = mapPost(data as PostRowWithAuthor)
+        const mapped = mapPost(data as unknown as PostRowWithAuthor)
         onSuccess?.(mapped)
 
         return mapped

@@ -1,95 +1,104 @@
-// 한글 주석: Supabase Row → UI Type 변환 매퍼
+// 한글 주석: Supabase Row → GRIT V2 UI 타입 변환 매퍼
 //
-// ▣ 이 파일의 역할:
-//   - DB는 snake_case (like_count, author_id, created_at ...)
-//   - UI는 camelCase (likeCount, author, createdAt ...)
-//   - 이 두 세계 사이를 이어주는 "번역기" 역할
-//
-// ▣ 왜 분리하나?
-//   - DB 스키마 바뀌어도 UI는 건드릴 필요 없게 (변경 영향 최소화)
-//   - 각 테이블의 join 데이터를 UI가 쓰기 좋은 구조로 정리
-//   - 훅·컴포넌트 코드가 훨씬 짧고 깔끔해짐
-//
-// ▣ 사용 예:
-//   const row = await supabase.from('posts').select('*, profiles:author_id(*)')
-//   const post = mapPostRow(row)  // UI용 Post 타입
+// ▣ DB는 snake_case, UI는 camelCase를 쓴다.
+// ▣ V2 피드 카드가 요구하는 작성자 인증/그릿/인용/미디어 필드를 한 곳에서 정리한다.
 
 import type { Tables } from './database.types'
-import type { Post, Comment, PostAuthor, Category } from './types'
+import type { Category, Comment, Industry, Post, PostAuthor, QuotedPost } from './types'
 
-// ─────────────────────────────────────────────
-// 한글 주석: DB Row 타입 별칭 (편의용)
-// ─────────────────────────────────────────────
 type PostRow = Tables<'posts'>
 type CommentRow = Tables<'comments'>
 type ProfileRow = Tables<'profiles'>
 
-// 한글 주석: profiles 조인된 타입 (Supabase 클라이언트가 자동 추론)
-//   - 실제 쿼리: .select('*, author:profiles!author_id(*)')
-//   - 조인 결과는 author 키 아래 프로필이 들어옴
 export type PostRowWithAuthor = PostRow & {
   author: ProfileRow | null
+  quoted?: (PostRow & { author: ProfileRow | null }) | null
 }
 
 export type CommentRowWithAuthor = CommentRow & {
   author: ProfileRow | null
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: 프로필 Row → PostAuthor (공통 매퍼)
-// ─────────────────────────────────────────────
+/** 한글 주석: 프로필 row를 피드/댓글 작성자 모델로 바꾼다. */
 export function mapAuthor(p: ProfileRow | null): PostAuthor {
-  // 한글 주석: 프로필 join 실패 시 폴백 (프로필 삭제된 경우 등)
   if (!p) {
     return {
       id: 'unknown',
       nickname: '사장님',
       industry: 'etc',
       isNpc: false,
+      tier: 'guest',
+      gritScore: 0,
     }
   }
+
   return {
     id: p.id,
     nickname: p.nickname,
-    industry: p.industry,
+    industry: p.industry as Industry,
     isNpc: p.is_npc,
+    avatarUrl: p.avatar_url,
+    region: p.region,
+    yearsInBusiness: p.years_in_business,
+    tier: p.tier,
+    verifiedAt: p.verified_at,
+    gritScore: p.grit_score,
+    followerCount: p.follower_count,
+    followingCount: p.following_count,
   }
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: Post Row → UI Post 타입
-// ─────────────────────────────────────────────
+/** 한글 주석: 인용 카드 안에 들어가는 원글 요약 모델. */
+function mapQuotedPost(row: (PostRow & { author: ProfileRow | null }) | null | undefined): QuotedPost | null {
+  if (!row) return null
+  return {
+    id: row.id,
+    author: mapAuthor(row.author),
+    title: row.title,
+    body: row.body,
+    createdAt: row.created_at,
+  }
+}
+
+/** 한글 주석: 게시글 row를 V2 PostCard가 바로 렌더링할 수 있는 모델로 변환한다. */
 export function mapPost(row: PostRowWithAuthor): Post {
+  const imageUrls = row.image_urls?.length
+    ? row.image_urls
+    : row.image_url
+      ? [row.image_url]
+      : []
+
   return {
     id: row.id,
     author: mapAuthor(row.author),
     category: row.category as Category,
     title: row.title,
     body: row.body,
-    thumbnailUrl: row.image_url ?? undefined,
+    imageUrl: imageUrls[0],
+    imageUrls,
+    thumbnailUrl: row.video_thumbnail_url ?? imageUrls[0],
+    videoUrl: row.video_url,
+    videoThumbnailUrl: row.video_thumbnail_url,
     likeCount: row.like_count,
     dislikeCount: row.dislike_count,
     commentCount: row.comment_count,
-    // 한글 주석: viewCount는 DB에 아직 없음 → 0 고정 (Phase 3에서 추가 예정)
+    bookmarkCount: row.bookmark_count,
+    quoteCount: row.quote_count,
     viewCount: 0,
     createdAt: row.created_at,
-    // 한글 주석: myReaction은 별도 쿼리로 조합 (reactions 테이블 조회 필요)
-    //   - 지금은 undefined → 훅 레이어에서 주입
+    isQuote: row.is_quote,
+    quotedPostId: row.quoted_post_id,
+    quotedPost: mapQuotedPost(row.quoted),
     myReaction: undefined,
   }
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: 복수 Post Row 한 번에 변환
-// ─────────────────────────────────────────────
 export function mapPosts(rows: PostRowWithAuthor[] | null): Post[] {
   if (!rows) return []
   return rows.map(mapPost)
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: Comment Row → UI Comment 타입
-// ─────────────────────────────────────────────
+/** 한글 주석: 댓글 row를 댓글 리스트 모델로 변환한다. */
 export function mapComment(row: CommentRowWithAuthor): Comment {
   return {
     id: row.id,
@@ -109,16 +118,11 @@ export function mapComments(rows: CommentRowWithAuthor[] | null): Comment[] {
   return rows.map(mapComment)
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: 내 반응(myReaction) 주입 헬퍼
-//   - posts/comments 배열에 내가 누른 like/dislike 붙여줌
-//   - reactions 테이블에서 user_id 필터로 따로 조회 후 Map으로 join
-// ─────────────────────────────────────────────
+/** 한글 주석: reactions 테이블 조회 결과를 현재 유저의 내 반응 상태로 주입한다. */
 export function injectMyReaction<T extends { id: string; myReaction?: 'like' | 'dislike' | null }>(
   items: T[],
   myReactions: { target_id: string; type: 'like' | 'dislike' }[],
 ): T[] {
-  // 한글 주석: target_id → type 맵으로 만들어 O(1) 조회
   const map = new Map(myReactions.map((r) => [r.target_id, r.type]))
   return items.map((item) => ({
     ...item,

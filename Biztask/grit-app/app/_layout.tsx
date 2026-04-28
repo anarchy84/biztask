@@ -75,6 +75,13 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg.base } }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen
+              name="post/new"
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
               name="post/[id]"
               options={{
                 presentation: 'card',

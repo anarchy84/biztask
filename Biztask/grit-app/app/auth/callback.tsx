@@ -86,7 +86,7 @@ export default function AuthCallbackScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.card}>
-        <ActivityIndicator size="large" color={colors.brand} />
+        <ActivityIndicator size="large" color={colors.brand[500]} />
         <Text style={styles.title}>
           {error ? '로그인을 완료하지 못했어' : '로그인 마무리 중…'}
         </Text>
@@ -118,7 +118,7 @@ export default function AuthCallbackScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -130,14 +130,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 28,
     alignItems: 'center',
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.bg.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.line.default,
   },
   title: {
     marginTop: 18,
     fontSize: 20,
-    color: colors.textStrong,
+    color: colors.text.primary,
     fontFamily: 'Pretendard-SemiBold',
     textAlign: 'center',
   },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 14,
     lineHeight: 22,
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     fontFamily: 'Pretendard-Regular',
     textAlign: 'center',
   },
@@ -161,21 +161,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButton: {
-    backgroundColor: colors.bgBrand,
+    backgroundColor: colors.brand[500],
   },
   primaryButtonText: {
     fontSize: 15,
-    color: colors.textStrong,
+    color: colors.text.primary,
     fontFamily: 'Pretendard-SemiBold',
   },
   secondaryButton: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.line.strong,
   },
   secondaryButtonText: {
     fontSize: 15,
-    color: colors.textStrong,
+    color: colors.text.primary,
     fontFamily: 'Pretendard-Medium',
   },
 })

@@ -61,7 +61,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg.base} />
 
       {/* 상단 닫기 버튼 (모달처럼 취급) */}
       <View style={styles.header}>
@@ -125,7 +125,7 @@ export default function LoginScreen() {
           disabled={loading}
         >
           {loading && activeProvider === 'google' ? (
-            <ActivityIndicator size="small" color={colors.textStrong} />
+            <ActivityIndicator size="small" color={colors.text.primary} />
           ) : (
             <>
               <Text style={styles.btnIconGoogle}>G</Text>
@@ -172,7 +172,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   header: {
     height: 48,
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   closeIcon: {
     fontSize: 20,
-    color: colors.textStrong,
+    color: colors.text.primary,
   },
   hero: {
     alignItems: 'center',
@@ -197,20 +197,20 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 48,
     fontFamily: 'Pretendard-Bold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     letterSpacing: 4,
     marginBottom: 16,
   },
   headline: {
     fontSize: 20,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     marginBottom: 8,
   },
   subhead: {
     fontSize: 14,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -248,7 +248,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     fontFamily: 'Pretendard-Regular',
   },
   btn: {
@@ -276,9 +276,9 @@ const styles = StyleSheet.create({
   },
   // 구글: 흰 배경 + 테두리
   btnGoogle: {
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.line.strong,
   },
   btnIconGoogle: {
     fontSize: 18,
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   btnTextGoogle: {
     fontSize: 15,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
   },
   anonymousBox: {
     alignItems: 'center',
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   anonymousText: {
     fontSize: 13,
     fontFamily: 'Pretendard-Medium',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     textDecorationLine: 'underline',
   },
   footer: {
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 11,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: 17,
   },

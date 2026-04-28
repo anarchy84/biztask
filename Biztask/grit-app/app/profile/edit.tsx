@@ -140,7 +140,7 @@ export default function ProfileEditScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centerBox}>
-          <ActivityIndicator color={colors.brand} />
+          <ActivityIndicator color={colors.brand[500]} />
         </View>
       </SafeAreaView>
     )
@@ -150,7 +150,7 @@ export default function ProfileEditScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg.base} />
 
       {/* 헤더 */}
       <View style={styles.header}>
@@ -165,7 +165,7 @@ export default function ProfileEditScreen() {
           hitSlop={8}
         >
           {updating ? (
-            <ActivityIndicator size="small" color={colors.brand} />
+            <ActivityIndicator size="small" color={colors.brand[500]} />
           ) : (
             <Text
               style={[
@@ -212,7 +212,7 @@ export default function ProfileEditScreen() {
             >
               {avatarUploading ? (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <ActivityIndicator color={colors.textBrand} />
+                  <ActivityIndicator color={colors.brand[400]} />
                 </View>
               ) : avatarUrl ? (
                 <Image
@@ -247,7 +247,7 @@ export default function ProfileEditScreen() {
                 setNickname(t)
               }}
               placeholder="2~20자"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.text.tertiary}
               maxLength={NICKNAME_MAX}
               editable={!updating}
               autoCapitalize="none"
@@ -307,7 +307,7 @@ export default function ProfileEditScreen() {
                 setBio(t)
               }}
               placeholder="다른 사장님들에게 한마디 (예: 동네 작은 카페 사장)"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.text.tertiary}
               maxLength={BIO_MAX}
               editable={!updating}
               multiline
@@ -326,7 +326,7 @@ export default function ProfileEditScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  safe: { flex: 1, backgroundColor: colors.bg.base },
   flex: { flex: 1 },
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.line.default,
   },
   headerBtn: {
     minWidth: 44,
@@ -348,20 +348,20 @@ const styles = StyleSheet.create({
   headerBtnText: {
     fontSize: 14,
     fontFamily: 'Pretendard-Medium',
-    color: colors.textPrimary,
+    color: colors.text.secondary,
   },
   headerBtnSave: {
-    color: colors.textBrand,
+    color: colors.brand[400],
     fontFamily: 'Pretendard-SemiBold',
   },
   headerBtnDisabled: {
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     opacity: 0.5,
   },
   headerTitle: {
     fontSize: 16,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
   },
 
   // 에러 배너
@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: colors.bgBrandSoft,
+    backgroundColor: colors.bg.nested,
   },
   avatarPlaceholder: {
     alignItems: 'center',
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     fontSize: 36,
     fontFamily: 'Pretendard-Bold',
-    color: colors.textBrand,
+    color: colors.brand[400],
   },
   avatarBadge: {
     position: 'absolute',
@@ -422,18 +422,18 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: colors.brand,
+    backgroundColor: colors.brand[500],
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.bg,
+    borderColor: colors.bg.base,
   },
   avatarBadgeText: {
     fontSize: 14,
   },
   avatarRemoveText: {
     fontSize: 12,
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     fontFamily: 'Pretendard-Medium',
     textDecorationLine: 'underline',
     marginTop: 4,
@@ -446,26 +446,26 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     marginBottom: 8,
   },
   sublabel: {
     fontSize: 12,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     marginTop: -4,
     marginBottom: 12,
   },
   input: {
     fontSize: 15,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textStrong,
+    color: colors.text.primary,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.line.default,
     borderRadius: 10,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   bioInput: {
     minHeight: 80,
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: 11,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     textAlign: 'right',
     marginTop: 6,
   },
@@ -491,12 +491,12 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.base,
   },
   industryChipText: {
     fontSize: 13,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textPrimary,
+    color: colors.text.secondary,
   },
 })

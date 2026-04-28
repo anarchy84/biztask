@@ -59,7 +59,7 @@ export type ThemeMode = 'light' | 'dark' | 'auto'
 interface ThemeContextValue {
   mode: ThemeMode               // 사용자 설정 ('auto'면 시스템 따라감)
   resolvedMode: 'light' | 'dark' // 실제 적용된 모드 (auto 해석 후)
-  theme: typeof darkColors      // 현재 적용된 컬러 토큰
+  theme: typeof darkColors | typeof lightColors // 현재 적용된 컬러 토큰
   setMode: (mode: ThemeMode) => Promise<void>
 }
 

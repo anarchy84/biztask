@@ -1,259 +1,148 @@
-// 한글 주석: 내정보 탭 화면
+// 한글 주석: V2 프로필 화면
 //
-// ▣ 이 화면이 하는 일:
-//   - AuthContext의 profile 실데이터 표시
-//   - useMyStats로 내 활동 카운트 조회 (글·댓글·받은 좋아요)
-//   - 익명 상태면 "로그인하기" CTA 큰 버튼
-//   - 소셜 로그인 상태면 "로그아웃" 버튼 + 프로필 편집 링크 (Phase 3-2에서 활성화)
-//
-// ▣ 메뉴 구조:
-//   - 익명일 때: 로그인 CTA + 기본 메뉴 (공지/문의/약관/버전)
-//   - 로그인 상태: 전체 메뉴 (내 글·댓글·좋아요한 글·편집 등)
-//
-// ▣ 로그아웃:
-//   - AuthContext.signOut 호출 → 자동으로 새 익명 세션 발급
-//   - 프로필이 새 익명으로 바뀌니 화면 자동 리렌더
+// ▣ 커버 + 아바타 + 통계 + Mutual + 그릿 게이지 + 프로필 탭 구조.
 
-import React from 'react'
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  Pressable,
-  Alert,
-  ActivityIndicator,
-  Image,
-} from 'react-native'
+import React, { useState } from 'react'
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
+import { Avatar } from '@/components/common/Avatar'
+import { IndustryBadge, ProBlueBadge, VerifiedBadge, YearsBadge } from '@/components/common/Badge'
+import { Button } from '@/components/common/Button'
+import { GritGauge } from '@/components/common/GritGauge'
 import { colors } from '@/constants/colors'
-import IndustryBadge from '@/components/common/IndustryBadge'
+import { radius, spacing } from '@/constants/spacing'
+import { typography } from '@/constants/typography'
+import { INDUSTRY_META } from '@/lib/types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useMyStats } from '@/lib/hooks/useMyStats'
 
-interface MenuItem {
-  icon: string
-  label: string
-  hint?: string
-  onPress?: () => void
-  disabled?: boolean
-}
+const TABS = ['내 게시물', '답글', '비즈니스 제안', '저장']
 
 export default function ProfileScreen() {
-  const { profile, isAnonymous, signOut } = useAuth()
-  const { stats, loading: statsLoading } = useMyStats()
+  const { profile, isAnonymous } = useAuth()
+  const { stats, loading } = useMyStats()
+  const [activeTab, setActiveTab] = useState(0)
 
-  // ─────────────────────────────────────────────
-  // 한글 주석: 로그아웃 핸들러
-  //   - Alert로 한 번 확인
-  //   - signOut 완료되면 AuthContext가 새 익명 세션 발급
-  // ─────────────────────────────────────────────
-  const handleSignOut = () => {
-    Alert.alert(
-      '로그아웃할까?',
-      '로그아웃해도 익명으로 앱은 계속 쓸 수 있어.\n다시 로그인하면 기록이 돌아와.',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '로그아웃',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut()
-            } catch (e) {
-              Alert.alert(
-                '로그아웃 실패',
-                e instanceof Error ? e.message : '다시 시도해줘',
-              )
-            }
-          },
-        },
-      ],
-    )
-  }
-
-  // 한글 주석: 프로필 없음은 AuthGate에서 막아주지만 TypeScript 타입 좁히기용
   if (!profile) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centerBox}>
-          <ActivityIndicator color={colors.brand} />
+          <ActivityIndicator color={colors.brand[500]} />
         </View>
       </SafeAreaView>
     )
   }
 
-  // ─────────────────────────────────────────────
-  // 한글 주석: 메뉴 구성 (익명 vs 로그인 상태에 따라 다르게)
-  // ─────────────────────────────────────────────
-  const activitySection: MenuItem[] = [
-    { icon: '📝', label: '내가 쓴 글', disabled: isAnonymous },
-    { icon: '💬', label: '내 댓글', disabled: isAnonymous },
-    { icon: '♥', label: '좋아요한 글', disabled: isAnonymous },
-  ]
-
-  const settingsSection: MenuItem[] = [
-    { icon: '🔔', label: '알림 설정', hint: '준비중' },
-    {
-      // 한글 주석: 프로필 편집은 익명 유저도 사용 가능 (닉네임/업종/bio/아바타)
-      icon: '🎨',
-      label: '프로필 편집',
-      onPress: () => router.push('/profile/edit' as any),
-    },
-    {
-      // 한글 주석: 업종 변경도 프로필 편집 화면 안에 있으니 같은 곳으로 보냄
-      icon: '🏷️',
-      label: '업종 변경',
-      onPress: () => router.push('/profile/edit' as any),
-    },
-  ]
-
-  const infoSection: MenuItem[] = [
-    { icon: '📣', label: '공지사항' },
-    { icon: '❓', label: '문의하기' },
-    { icon: '📄', label: '이용약관 · 개인정보' },
-    { icon: 'ℹ️', label: '앱 버전', hint: 'v0.1.0 (Phase 3)' },
-  ]
+  const industryLabel = INDUSTRY_META[profile.industry]?.label ?? '기타'
+  const verified = profile.tier === 'verified' || profile.tier === 'blue' || Boolean(profile.verified_at)
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView>
-        {/* 프로필 헤더 */}
-        <View style={styles.profileHeader}>
-          {profile.avatar_url ? (
-            // 한글 주석: 업로드한 아바타 이미지 표시
-            <Image
-              source={{ uri: profile.avatar_url }}
-              style={styles.avatar}
-              resizeMode="cover"
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+        <View style={styles.cover}>
+          {profile.cover_url ? (
+            <Image source={{ uri: profile.cover_url }} style={styles.coverImage} resizeMode="cover" />
+          ) : null}
+          <View style={styles.coverGlow} />
+          <View style={styles.coverFade} />
+        </View>
+
+        <View style={styles.profileBlock}>
+          <View style={styles.avatarActionRow}>
+            <Avatar
+              url={profile.avatar_url}
+              nickname={profile.nickname}
+              size={84}
+              showRing={verified}
+              style={styles.avatarOverlap}
             />
-          ) : (
-            // 한글 주석: 기본 이니셜 아바타
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {profile.nickname.charAt(0)}
-              </Text>
+            <View style={styles.profileActions}>
+              <Pressable style={styles.settingsButton} accessibilityRole="button" accessibilityLabel="설정">
+                <Text style={styles.settingsIcon}>⚙</Text>
+              </Pressable>
+              <Button
+                label="프로필 편집"
+                size="sm"
+                onPress={() => router.push('/profile/edit' as any)}
+              />
             </View>
-          )}
-          <Text style={styles.nickname}>{profile.nickname}</Text>
-          <View style={styles.badgeWrap}>
-            <IndustryBadge industry={profile.industry} size="md" />
           </View>
-          {profile.bio ? (
-            <Text style={styles.bio}>{profile.bio}</Text>
-          ) : isAnonymous ? (
-            <Text style={styles.bioPlaceholder}>
-              로그인하면 닉네임·업종·소개를 바꿀 수 있어
-            </Text>
-          ) : (
-            <Text style={styles.bioPlaceholder}>
-              프로필 편집에서 한줄 소개를 추가해봐
-            </Text>
-          )}
+
+          <View style={styles.nameRow}>
+            <Text style={styles.nickname}>{profile.nickname}</Text>
+            {verified ? <VerifiedBadge size={16} /> : null}
+            {profile.tier === 'blue' ? <ProBlueBadge /> : null}
+          </View>
+
+          <View style={styles.badgeRow}>
+            <IndustryBadge region={profile.region} industryLabel={industryLabel} />
+            <YearsBadge years={profile.years_in_business} />
+          </View>
+
+          <Text style={styles.bio}>
+            {profile.bio ?? (isAnonymous ? '익명으로 둘러보는 중이야. 로그인하면 기록을 지킬 수 있어.' : '프로필 편집에서 사장님의 한 줄 소개를 추가해봐.')}
+          </Text>
         </View>
 
-        {/* 한글 주석: 익명일 때만 로그인 CTA 큰 버튼 */}
-        {isAnonymous && (
-          <View style={styles.loginCtaBox}>
+        {isAnonymous ? (
+          <View style={styles.loginCta}>
+            <Text style={styles.loginTitle}>계정을 지켜둘까요?</Text>
+            <Text style={styles.loginText}>익명 상태에서 쓴 글과 댓글도 로그인하면 이어서 쓸 수 있어.</Text>
+            <Button label="로그인하고 계정 지키기" onPress={() => router.push('/login' as any)} fullWidth />
+          </View>
+        ) : null}
+
+        <View style={styles.statsRow}>
+          <Stat label="게시물" value={loading ? '…' : String(stats.postCount)} />
+          <Stat label="팔로워" value={profile.follower_count.toLocaleString()} />
+          <Stat label="팔로잉" value={profile.following_count.toLocaleString()} />
+        </View>
+
+        <View style={styles.mutualRow}>
+          <View style={styles.mutualAvatars}>
+            {['마', '강', '을', '홍'].map((name, index) => (
+              <Avatar key={name} nickname={name} size={24} style={{ marginLeft: index === 0 ? 0 : -8 }} />
+            ))}
+          </View>
+          <Text style={styles.mutualText}>
+            <Text style={styles.mutualStrong}>23명</Text>의 공통 팔로워
+          </Text>
+        </View>
+
+        <View style={styles.gaugeCard}>
+          <GritGauge mode="bar" score={profile.grit_score} />
+          <Text style={styles.gaugeHint}>매칭 응답률과 인증 활동이 올라가면 지수가 상승해.</Text>
+        </View>
+
+        <View style={styles.tabs}>
+          {TABS.map((tab, index) => (
             <Pressable
-              style={styles.loginCtaBtn}
-              onPress={() => router.push('/login' as any)}
+              key={tab}
+              style={styles.tab}
+              onPress={() => setActiveTab(index)}
+              accessibilityRole="button"
             >
-              <Text style={styles.loginCtaText}>
-                🚀 로그인하고 계정 지키기
-              </Text>
+              <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>{tab}</Text>
+              {activeTab === index ? <View style={styles.tabLine} /> : null}
             </Pressable>
-            <Text style={styles.loginCtaSub}>
-              익명 상태에서 쓴 글·댓글도 그대로 유지돼
-            </Text>
-          </View>
-        )}
-
-        {/* 통계 바 */}
-        <View style={styles.statsBar}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {statsLoading ? '…' : stats.postCount}
-            </Text>
-            <Text style={styles.statLabel}>글</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {statsLoading ? '…' : stats.commentCount}
-            </Text>
-            <Text style={styles.statLabel}>댓글</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {statsLoading ? '…' : stats.likesReceived}
-            </Text>
-            <Text style={styles.statLabel}>받은 ♥</Text>
-          </View>
+          ))}
         </View>
 
-        {/* 메뉴 섹션들 */}
-        <MenuSection items={activitySection} />
-        <MenuSection items={settingsSection} />
-        <MenuSection items={infoSection} />
-
-        {/* 한글 주석: 로그인 상태면 로그아웃, 익명이면 숨김 */}
-        {!isAnonymous && (
-          <Pressable style={styles.logoutBtn} onPress={handleSignOut}>
-            <Text style={styles.logoutText}>로그아웃</Text>
-          </Pressable>
-        )}
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>GRIT · 사장님들의 쉼터</Text>
+        <View style={styles.emptyPanel}>
+          <Text style={styles.emptyTitle}>{TABS[activeTab]}</Text>
+          <Text style={styles.emptyText}>V2 피드 연결 후 이 영역에 활동이 표시돼.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-// ─────────────────────────────────────────────
-// 메뉴 섹션 서브 컴포넌트
-// ─────────────────────────────────────────────
-function MenuSection({ items }: { items: MenuItem[] }) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.menuSection}>
-      {items.map((item, idx) => (
-        <Pressable
-          key={item.label}
-          style={[
-            styles.menuItem,
-            idx !== items.length - 1 && styles.menuItemBorder,
-            item.disabled && styles.menuItemDisabled,
-          ]}
-          onPress={item.onPress}
-          disabled={item.disabled}
-        >
-          <Text
-            style={[
-              styles.menuIcon,
-              item.disabled && styles.menuIconDisabled,
-            ]}
-          >
-            {item.icon}
-          </Text>
-          <Text
-            style={[
-              styles.menuLabel,
-              item.disabled && styles.menuLabelDisabled,
-            ]}
-          >
-            {item.label}
-          </Text>
-          {item.hint ? (
-            <Text style={styles.menuHint}>{item.hint}</Text>
-          ) : !item.disabled ? (
-            <Text style={styles.menuArrow}>›</Text>
-          ) : null}
-        </Pressable>
-      ))}
+    <View style={styles.stat}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   )
 }
@@ -261,191 +150,202 @@ function MenuSection({ items }: { items: MenuItem[] }) {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bgMuted,
+    backgroundColor: colors.bg.base,
+  },
+  content: {
+    paddingBottom: 112,
   },
   centerBox: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  profileHeader: {
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    paddingVertical: 28,
-    paddingHorizontal: 20,
+  cover: {
+    height: 180,
+    backgroundColor: colors.bg.surface,
+    overflow: 'hidden',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.line.default,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.bgBrandSoft,
+  coverImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  coverGlow: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.brand[800],
+    opacity: 0.16,
+  },
+  coverFade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.bg.base,
+    opacity: 0.18,
+  },
+  profileBlock: {
+    paddingHorizontal: spacing[4],
+    marginTop: -42,
+    gap: spacing[3],
+  },
+  avatarActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  avatarOverlap: {
+    borderWidth: 3,
+    borderColor: colors.bg.base,
+  },
+  profileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  settingsButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.surface,
   },
-  avatarText: {
-    fontSize: 28,
-    fontFamily: 'Pretendard-Bold',
-    color: colors.textBrand,
+  settingsIcon: {
+    color: colors.text.secondary,
+    fontSize: 17,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing[2],
   },
   nickname: {
-    fontSize: 18,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
-    marginBottom: 8,
+    ...typography.heading2,
+    color: colors.text.primary,
   },
-  badgeWrap: {
-    marginBottom: 10,
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[2],
   },
   bio: {
-    fontSize: 13,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
+    ...typography.body,
+    color: colors.text.secondary,
   },
-  bioPlaceholder: {
-    fontSize: 12,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
-    opacity: 0.7,
-    textAlign: 'center',
-    lineHeight: 18,
+  loginCta: {
+    margin: spacing[4],
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.surface,
+    padding: spacing[4],
+    gap: spacing[3],
   },
-
-  // 로그인 CTA (익명 전용)
-  loginCtaBox: {
-    backgroundColor: colors.bg,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
+  loginTitle: {
+    ...typography.bodyEmphasis,
+    color: colors.text.primary,
+  },
+  loginText: {
+    ...typography.meta,
+    color: colors.text.tertiary,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[4],
+    gap: spacing[4],
+  },
+  stat: {
+    flex: 1,
+  },
+  statValue: {
+    ...typography.numStrong,
+    color: colors.text.primary,
+    fontVariant: ['tabular-nums'],
+  },
+  statLabel: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  mutualRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing[4],
+    gap: spacing[3],
+    marginBottom: spacing[4],
   },
-  loginCtaBtn: {
-    width: '100%',
-    height: 48,
-    borderRadius: 10,
-    backgroundColor: colors.brand,
+  mutualAvatars: {
+    flexDirection: 'row',
+  },
+  mutualText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  mutualStrong: {
+    color: colors.brand[300],
+    fontWeight: '700',
+  },
+  gaugeCard: {
+    marginHorizontal: spacing[4],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.surface,
+    padding: spacing[4],
+    gap: spacing[2],
+  },
+  gaugeHint: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  tabs: {
+    flexDirection: 'row',
+    marginTop: spacing[4],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line.default,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loginCtaText: {
-    fontSize: 14,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+  tabText: {
+    ...typography.metaEmphasis,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
-  loginCtaSub: {
-    fontSize: 11,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+  tabTextActive: {
+    color: colors.text.primary,
   },
-
-  // 통계 바
-  statsBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.bg,
-    marginTop: 8,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
+  tabLine: {
+    position: 'absolute',
+    left: spacing[3],
+    right: spacing[3],
+    bottom: 0,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.brand[400],
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-  },
-  statValue: {
-    fontSize: 18,
-    fontFamily: 'Pretendard-Bold',
-    color: colors.textStrong,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-
-  // 메뉴
-  menuSection: {
-    backgroundColor: colors.bg,
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  menuItemDisabled: {
-    opacity: 0.5,
-  },
-  menuIcon: {
-    fontSize: 16,
-    width: 28,
-  },
-  menuIconDisabled: {
-    opacity: 0.5,
-  },
-  menuLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textPrimary,
-  },
-  menuLabelDisabled: {
-    color: colors.textMuted,
-  },
-  menuArrow: {
-    fontSize: 18,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
-  },
-  menuHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
-  },
-
-  // 로그아웃
-  logoutBtn: {
-    marginTop: 20,
-    marginHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: colors.bg,
+  emptyPanel: {
+    margin: spacing[4],
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.surface,
+    padding: spacing[6],
     alignItems: 'center',
+    gap: spacing[2],
   },
-  logoutText: {
-    fontSize: 13,
-    fontFamily: 'Pretendard-Medium',
-    color: colors.textMuted,
+  emptyTitle: {
+    ...typography.bodyEmphasis,
+    color: colors.text.primary,
   },
-  footer: {
-    paddingVertical: 32,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 11,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+  emptyText: {
+    ...typography.meta,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
 })

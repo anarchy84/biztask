@@ -95,7 +95,7 @@ export default function OnboardingNicknameScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg.base} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -127,7 +127,7 @@ export default function OnboardingNicknameScreen() {
                 setNickname(t)
               }}
               placeholder="예: 동네카페사장, 눈썹장인..."
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={colors.text.tertiary}
               maxLength={20}
               editable={!submitting}
               autoCapitalize="none"
@@ -191,7 +191,7 @@ export default function OnboardingNicknameScreen() {
             onPress={handleSubmit}
           >
             {submitting ? (
-              <ActivityIndicator size="small" color={colors.textStrong} />
+              <ActivityIndicator size="small" color={colors.text.primary} />
             ) : (
               <Text
                 style={[
@@ -212,7 +212,7 @@ export default function OnboardingNicknameScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   flex: {
     flex: 1,
@@ -228,22 +228,22 @@ const styles = StyleSheet.create({
   greet: {
     fontSize: 15,
     fontFamily: 'Pretendard-Medium',
-    color: colors.textBrand,
+    color: colors.brand[400],
     marginBottom: 8,
   },
   title: {
     fontSize: 22,
     fontFamily: 'Pretendard-Bold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     lineHeight: 32,
     marginBottom: 16,
   },
   warn: {
     fontSize: 12,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     lineHeight: 19,
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.bg.surface,
     padding: 12,
     borderRadius: 8,
   },
@@ -253,31 +253,31 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     marginBottom: 8,
   },
   sublabel: {
     fontSize: 12,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     marginBottom: 12,
     marginTop: -4,
   },
   input: {
     fontSize: 16,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.line.default,
     borderRadius: 10,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   hint: {
     fontSize: 11,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textMuted,
+    color: colors.text.tertiary,
     marginTop: 6,
     textAlign: 'right',
   },
@@ -291,13 +291,13 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
+    borderColor: colors.line.default,
+    backgroundColor: colors.bg.base,
   },
   industryChipText: {
     fontSize: 13,
     fontFamily: 'Pretendard-Regular',
-    color: colors.textPrimary,
+    color: colors.text.secondary,
   },
   errorBox: {
     padding: 12,
@@ -317,25 +317,25 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 20 : 20,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
+    borderTopColor: colors.line.default,
+    backgroundColor: colors.bg.base,
   },
   submit: {
     height: 52,
     borderRadius: 10,
-    backgroundColor: colors.brand,
+    backgroundColor: colors.brand[500],
     alignItems: 'center',
     justifyContent: 'center',
   },
   submitDisabled: {
-    backgroundColor: colors.bgMuted,
+    backgroundColor: colors.bg.raised,
   },
   submitText: {
     fontSize: 15,
     fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
+    color: colors.text.primary,
   },
   submitTextDisabled: {
-    color: colors.textMuted,
+    color: colors.text.tertiary,
   },
 })

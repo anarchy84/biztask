@@ -1,210 +1,375 @@
-// 한글 주석: 피드 카드 컴포넌트 (블라인드식 세로 리스트용)
+// 한글 주석: GRIT V2 피드 카드
 //
-// ▣ 이 컴포넌트가 하는 일:
-//   - 홈 피드에 나열되는 게시글 한 장.
-//   - 좌측: 업종 배지 + 닉네임 + 시간 + 제목 + 본문 2줄 미리보기 + 통계
-//   - 우측: 썸네일 (있을 때만, 64x64 정사각)
-//   - 전체 카드를 탭하면 상세 페이지로 이동.
-//
-// ▣ 디자인 원칙:
-//   - 블라인드의 비움: 카드 배경 #FFF, 아래 보더 1px #EEEEEE만.
-//   - 좋아요는 브랜드 연두 (내가 누른 상태는 더 진하게).
-//   - 싫어요는 부드러운 회색 (공격성 최소화).
-//   - 행간 21px 본문 (가독성 우선).
-//
-// ▣ 사용법:
-//   <PostCard post={post} onPress={() => router.push(`/post/${post.id}`)} />
+// ▣ 핸드오프 post-card.jsx를 RN/Expo 스타일로 재구현했다.
+// ▣ 지원 범위: 관계성 캡션, 인증/업종/연차 뱃지, 다중 이미지, 동영상 썸네일,
+//   인용글 카드, 좋아요/댓글/인용/저장 카운터.
 
-import React from 'react'
-import {
-  View,
-  Text,
-  Image,
-  Pressable,
-  StyleSheet,
-} from 'react-native'
-import { Post } from '@/lib/types'
+import React, { useState } from 'react'
+import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
+import type { Post } from '@/lib/types'
+import { INDUSTRY_META } from '@/lib/types'
 import { colors } from '@/constants/colors'
-import IndustryBadge from '@/components/common/IndustryBadge'
+import { typography } from '@/constants/typography'
+import { radius, spacing } from '@/constants/spacing'
+import { cardShadow } from '@/constants/shadows'
+import { Avatar } from '@/components/common/Avatar'
+import { IndustryBadge, VerifiedBadge, YearsBadge } from '@/components/common/Badge'
 import TimeAgo from '@/components/common/TimeAgo'
 
 interface PostCardProps {
   post: Post
   onPress?: () => void
+  compact?: boolean
+  style?: ViewStyle
 }
 
-export default function PostCard({ post, onPress }: PostCardProps) {
-  // 한글 주석: 내가 좋아요 눌렀는지 여부 (표시 스타일 분기용)
-  const isLiked = post.myReaction === 'like'
+/** 한글 주석: 피드와 상세에서 공유하는 V2 게시글 카드. */
+export default function PostCard({ post, onPress, compact = false, style }: PostCardProps) {
+  const [liked, setLiked] = useState(post.myReaction === 'like')
+  const [bookmarked, setBookmarked] = useState(false)
+  const industryLabel = INDUSTRY_META[post.author.industry]?.label ?? '기타'
+  const isVerified = post.author.tier === 'verified' || post.author.tier === 'blue' || Boolean(post.author.verifiedAt)
+  const hasVideo = Boolean(post.videoThumbnailUrl || post.videoUrl)
 
   return (
     <Pressable
       onPress={onPress}
-      // 한글 주석: 눌렀을 때 배경 살짝 눌림 효과 (RN 표준 방식)
-      android_ripple={{ color: colors.bgMuted }}
       style={({ pressed }) => [
         styles.card,
+        compact && styles.cardCompact,
         pressed && styles.cardPressed,
+        style,
       ]}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${post.author.nickname}님의 게시글`}
     >
-      {/* 한글 주석: 좌측 본문 영역 */}
-      <View style={styles.body}>
-        {/* 메타 줄: 배지 + 닉네임 + · + 시간 */}
-        <View style={styles.metaRow}>
-          <IndustryBadge industry={post.author.industry} />
-          <Text style={styles.nickname} numberOfLines={1}>
-            {post.author.nickname}
-          </Text>
-          <Text style={styles.dotSep}>·</Text>
-          <TimeAgo date={post.createdAt} style={styles.metaText} />
+      {post.relation ? (
+        <View style={styles.relationRow}>
+          <Text style={styles.relationIcon}>↗</Text>
+          <Text style={styles.relationText}>{post.relation}</Text>
         </View>
+      ) : null}
 
-        {/* 제목 */}
-        <Text style={styles.title} numberOfLines={2}>
-          {post.title}
-        </Text>
+      <View style={styles.header}>
+        <Avatar
+          url={post.author.avatarUrl}
+          nickname={post.author.nickname}
+          size={compact ? 32 : 40}
+          showRing={isVerified}
+        />
 
-        {/* 본문 2줄 미리보기 */}
-        <Text style={styles.preview} numberOfLines={2}>
-          {post.body}
-        </Text>
-
-        {/* 통계 줄: 좋아요 · 싫어요 · 댓글수 / 우측: 조회수 */}
-        <View style={styles.statRow}>
-          <View style={styles.stat}>
-            <ThumbsUpIcon color={isLiked ? colors.like : colors.textMuted} filled={isLiked} />
-            <Text style={[styles.statText, isLiked && styles.statTextLiked]}>
-              {post.likeCount}
+        <View style={styles.headerBody}>
+          <View style={styles.nameRow}>
+            <Text style={styles.nickname} numberOfLines={1}>
+              {post.author.nickname}
             </Text>
+            {isVerified ? <VerifiedBadge size={14} /> : null}
+            <Text style={styles.dot}>·</Text>
+            <TimeAgo date={post.createdAt} style={styles.timeText} />
           </View>
-          <View style={styles.stat}>
-            <ThumbsDownIcon color={colors.textMuted} />
-            <Text style={styles.statText}>{post.dislikeCount}</Text>
+
+          <View style={styles.badgeRow}>
+            <IndustryBadge region={post.author.region} industryLabel={industryLabel} />
+            <YearsBadge years={post.author.yearsInBusiness} />
           </View>
-          <View style={styles.stat}>
-            <Text style={styles.statText}>💬 {post.commentCount}</Text>
-          </View>
-          <Text style={[styles.statText, styles.viewCount]}>
-            조회 {formatCount(post.viewCount)}
-          </Text>
         </View>
+
+        <Pressable style={styles.moreButton} accessibilityRole="button" accessibilityLabel="게시글 더보기">
+          <Text style={styles.moreText}>•••</Text>
+        </Pressable>
       </View>
 
-      {/* 한글 주석: 우측 썸네일 (있을 때만 렌더) */}
-      {post.thumbnailUrl && (
-        <Image
-          source={{ uri: post.thumbnailUrl }}
-          style={styles.thumb}
-          resizeMode="cover"
+      {post.title ? <Text style={styles.title}>{post.title}</Text> : null}
+      <Text style={styles.body}>{post.body}</Text>
+
+      {hasVideo ? (
+        <View style={styles.mediaBox}>
+          {post.videoThumbnailUrl ? (
+            <Image source={{ uri: post.videoThumbnailUrl }} style={styles.mediaImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.mediaPlaceholder} />
+          )}
+          <View style={styles.playBadge}>
+            <Text style={styles.playText}>▶</Text>
+          </View>
+        </View>
+      ) : post.imageUrls.length > 0 ? (
+        <ImageGrid urls={post.imageUrls} />
+      ) : null}
+
+      {post.isQuote ? (
+        <View style={styles.quoteIndent}>
+          {post.quotedPost ? (
+            <View style={styles.quoteCard}>
+              <View style={styles.quoteHead}>
+                <Avatar
+                  url={post.quotedPost.author.avatarUrl}
+                  nickname={post.quotedPost.author.nickname}
+                  size={24}
+                />
+                <Text style={styles.quoteName} numberOfLines={1}>
+                  {post.quotedPost.author.nickname}
+                </Text>
+                <Text style={styles.dot}>·</Text>
+                <TimeAgo date={post.quotedPost.createdAt} style={styles.timeText} />
+              </View>
+              <Text style={styles.quoteBody} numberOfLines={3}>
+                {post.quotedPost.body}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.quoteCard}>
+              <Text style={styles.quoteBody}>원글을 불러오는 중이야</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
+
+      <View style={styles.actionRow}>
+        <ActionButton icon="💬" count={post.commentCount} label="댓글" />
+        <ActionButton icon="↻" count={post.quoteCount} label="인용" accent={colors.brand[400]} />
+        <ActionButton
+          icon={liked ? '♥' : '♡'}
+          count={post.likeCount + (liked && post.myReaction !== 'like' ? 1 : 0)}
+          label="좋아요"
+          accent={liked ? colors.semantic.like : undefined}
+          onPress={() => setLiked((prev) => !prev)}
         />
-      )}
+        <ActionButton
+          icon={bookmarked ? '▰' : '▱'}
+          count={post.bookmarkCount + (bookmarked ? 1 : 0)}
+          label="저장"
+          accent={bookmarked ? colors.brand[400] : undefined}
+          onPress={() => setBookmarked((prev) => !prev)}
+        />
+      </View>
     </Pressable>
   )
 }
 
-// ─────────────────────────────────────────────
-// 한글 주석: 아이콘 - 외부 라이브러리 없이 SVG로 직접 그리려면
-//   react-native-svg가 필요한데, 목업 단계에선 emoji-style 텍스트로 간단 대체.
-//   Phase 2에서 react-native-svg + lucide-react-native로 교체 예정.
-// ─────────────────────────────────────────────
+function ImageGrid({ urls }: { urls: string[] }) {
+  const first = urls[0]
+  if (!first) return null
 
-function ThumbsUpIcon({ color, filled }: { color: string; filled?: boolean }) {
   return (
-    <Text style={{ fontSize: 12, color, fontWeight: filled ? '500' : '400' }}>
-      {filled ? '♥' : '♡'}
-    </Text>
+    <View style={styles.mediaBox}>
+      <Image source={{ uri: first }} style={styles.mediaImage} resizeMode="cover" />
+      {urls.length > 1 ? (
+        <View style={styles.imageCountBadge}>
+          <Text style={styles.imageCountText}>+{urls.length - 1}</Text>
+        </View>
+      ) : null}
+    </View>
   )
 }
 
-function ThumbsDownIcon({ color }: { color: string }) {
-  return <Text style={{ fontSize: 12, color }}>▽</Text>
+function ActionButton({
+  icon,
+  count,
+  label,
+  accent,
+  onPress,
+}: {
+  icon: string
+  count?: number
+  label: string
+  accent?: string
+  onPress?: () => void
+}) {
+  const color = accent ?? colors.text.tertiary
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.actionButton}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}${count != null ? ` ${count}` : ''}`}
+      hitSlop={4}
+    >
+      <Text style={[styles.actionIcon, { color }]}>{icon}</Text>
+      {count != null ? <Text style={[styles.actionText, { color }]}>{formatCount(count)}</Text> : null}
+    </Pressable>
+  )
 }
 
-// 한글 주석: 조회수 숫자 포맷 (1,234 → "1.2k")
-function formatCount(n: number): string {
-  if (n < 1000) return String(n)
-  if (n < 10000) return (n / 1000).toFixed(1) + 'k'
-  return Math.floor(n / 1000) + 'k'
+function formatCount(count: number): string {
+  if (count < 1000) return String(count)
+  if (count < 10000) return `${(count / 1000).toFixed(1)}k`
+  return `${Math.floor(count / 1000)}k`
 }
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: colors.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    borderRadius: radius.lg,
+    padding: spacing[4],
+    gap: spacing[3],
+    ...cardShadow,
+  },
+  cardCompact: {
+    padding: spacing[3],
+    gap: spacing[2],
   },
   cardPressed: {
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.bg.raised,
   },
-  body: {
+  relationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  relationIcon: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  relationText: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing[3],
+  },
+  headerBody: {
     flex: 1,
     minWidth: 0,
   },
-  metaRow: {
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
+    gap: spacing[1],
   },
   nickname: {
-    fontSize: 12,
-    color: colors.textPrimary,
-    fontFamily: 'Pretendard-Medium',
-    maxWidth: 120,
+    ...typography.nickname,
+    color: colors.text.primary,
+    flexShrink: 1,
   },
-  dotSep: {
-    fontSize: 12,
-    color: colors.borderStrong,
+  dot: {
+    ...typography.meta,
+    color: colors.text.disabled,
   },
-  metaText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+  timeText: {
+    ...typography.meta,
+    color: colors.text.tertiary,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1],
+    marginTop: spacing[1],
+  },
+  moreButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -spacing[2],
+    marginRight: -spacing[2],
+  },
+  moreText: {
+    color: colors.text.tertiary,
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 15,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.textStrong,
-    lineHeight: 22,
-    marginBottom: 4,
+    ...typography.bodyEmphasis,
+    color: colors.text.primary,
   },
-  preview: {
-    fontSize: 13,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.textPrimary,
-    lineHeight: 21,
+  body: {
+    ...typography.body,
+    color: colors.text.primary,
   },
-  statRow: {
+  mediaBox: {
+    width: '100%',
+    aspectRatio: 16 / 10,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bg.raised,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+  },
+  mediaImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mediaPlaceholder: {
+    flex: 1,
+    backgroundColor: colors.bg.nested,
+  },
+  playBadge: {
+    position: 'absolute',
+    left: spacing[3],
+    bottom: spacing[3],
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  playText: {
+    color: colors.onBrand,
+    fontSize: 16,
+    marginLeft: 2,
+  },
+  imageCountBadge: {
+    position: 'absolute',
+    right: spacing[3],
+    bottom: spacing[3],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  imageCountText: {
+    ...typography.caption,
+    color: colors.onBrand,
+  },
+  quoteIndent: {
+    marginLeft: spacing[8],
+  },
+  quoteCard: {
+    backgroundColor: colors.bg.raised,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    borderRadius: radius.md,
+    padding: spacing[3],
+    gap: spacing[2],
+  },
+  quoteHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 8,
+    gap: spacing[2],
   },
-  stat: {
+  quoteName: {
+    ...typography.metaEmphasis,
+    color: colors.text.primary,
+    flexShrink: 1,
+  },
+  quoteBody: {
+    ...typography.meta,
+    color: colors.text.secondary,
+  },
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    justifyContent: 'space-between',
+    marginTop: spacing[1],
   },
-  statText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+  actionButton: {
+    minWidth: 48,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[1],
   },
-  statTextLiked: {
-    color: colors.textBrand,
-    fontFamily: 'Pretendard-Medium',
+  actionIcon: {
+    fontSize: 18,
   },
-  viewCount: {
-    marginLeft: 'auto',
-  },
-  thumb: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    backgroundColor: colors.bgMuted,
+  actionText: {
+    ...typography.metaEmphasis,
+    fontVariant: ['tabular-nums'],
   },
 })

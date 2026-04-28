@@ -1,301 +1,277 @@
-// 한글 주석: 홈 피드 화면 (하단 탭의 "홈")
+// 한글 주석: V2 홈 피드
 //
-// ▣ 이 화면이 하는 일:
-//   - 상단 헤더 (로고 GRIT + 알림 아이콘)
-//   - 횡스크롤 카테고리 탭 (전체/실시간/유머/고민/질문/꿀팁)
-//   - 세로 피드 리스트 (PostCard 반복) + Pull-to-refresh
-//   - 우하단 FAB (글쓰기 버튼)
-//
-// ▣ 데이터:
-//   - usePosts(category) 훅으로 Supabase에서 실시간 조회
-//   - NPC·실유저 글 섞여서 최신순/인기순으로 표시
-//
-// ▣ 실행 방법:
-//   - Expo Router v4 기준: app/(tabs)/index.tsx 경로면 자동으로 첫 탭이 됨
-//   - npx expo start → 시뮬레이터/실기기 연결
+// ▣ get_feed_ranked RPC를 우선 사용하고, 없으면 최신순 fallback을 쓴다.
+// ▣ 칩 필터는 Phase 7 알고리즘 연결 전까지 UI 상태만 바꾼다.
 
-import React, { useState } from 'react'
-import {
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native'
+import React from 'react'
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { Category, CATEGORY_LABELS } from '@/lib/types'
 import { colors } from '@/constants/colors'
+import { typography } from '@/constants/typography'
+import { radius, spacing } from '@/constants/spacing'
+import { FEED_FILTER_LABELS, type FeedFilter, type Post } from '@/lib/types'
+import { useFeed } from '@/lib/hooks/useFeed'
+import { useTier } from '@/lib/hooks/useTier'
 import PostCard from '@/components/feed/PostCard'
-import { usePosts } from '@/lib/hooks/usePosts'
 
-// ─────────────────────────────────────────────
-// 한글 주석: 카테고리 탭 순서 (상단 횡스크롤용)
-// ─────────────────────────────────────────────
-const CATEGORY_ORDER: Category[] = ['all', 'hot', 'humor', 'worry', 'question', 'tip']
-
-// ─────────────────────────────────────────────
-// 메인 컴포넌트
-// ─────────────────────────────────────────────
+const FILTERS: FeedFilter[] = ['all', 'following', 'industry', 'nearby', 'hot']
 
 export default function HomeFeedScreen() {
-  // 한글 주석: 선택된 카테고리 상태 (기본 '전체')
-  const [activeCategory, setActiveCategory] = useState<Category>('all')
-
-  // 한글 주석: Supabase에서 피드 조회 (카테고리 바뀌면 자동 재조회)
-  const { posts, loading, refreshing, error, refresh } = usePosts(activeCategory)
+  const { canWritePost } = useTier()
+  const {
+    posts,
+    filter,
+    setFilter,
+    loading,
+    refreshing,
+    loadingMore,
+    error,
+    refresh,
+    loadMore,
+  } = useFeed()
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-
-      {/* 헤더: 로고 + 알림 */}
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.logo}>GRIT</Text>
-        <Pressable
-          style={styles.iconBtn}
-          onPress={() => router.push('/notifications' as any)}
-        >
-          <Text style={styles.iconChar}>🔔</Text>
-        </Pressable>
+        <View style={styles.logoBox}>
+          <Text style={styles.logoGlyph}>그</Text>
+        </View>
+        <Text style={styles.logoText}>그릿</Text>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel="검색">
+            <Text style={styles.iconText}>⌕</Text>
+          </Pressable>
+          {canWritePost ? (
+            <Pressable
+              style={styles.writeButton}
+              onPress={() => router.push('/post/new' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="글쓰기"
+            >
+              <Text style={styles.writeButtonText}>＋</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
-      {/* 카테고리 횡스크롤 탭 */}
-      <View style={styles.tabWrap}>
-        <ScrollView
+      <View style={styles.filterRow}>
+        <FlatList
           horizontal
+          data={FILTERS}
+          keyExtractor={(item) => item}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabContainer}
-        >
-          {CATEGORY_ORDER.map((cat) => {
-            const isActive = cat === activeCategory
-            return (
-              <Pressable
-                key={cat}
-                onPress={() => setActiveCategory(cat)}
-                style={styles.tab}
-              >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {CATEGORY_LABELS[cat]}
-                </Text>
-                {/* 한글 주석: 활성 탭 하단 연두 라인 */}
-                {isActive && <View style={styles.tabIndicator} />}
-              </Pressable>
-            )
-          })}
-        </ScrollView>
+          contentContainerStyle={styles.filterContent}
+          renderItem={({ item }) => (
+            <Pressable
+              style={[styles.chip, item === filter && styles.chipActive]}
+              onPress={() => setFilter(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`${FEED_FILTER_LABELS[item]} 필터`}
+            >
+              <Text style={[styles.chipText, item === filter && styles.chipTextActive]}>
+                {FEED_FILTER_LABELS[item]}
+              </Text>
+            </Pressable>
+          )}
+        />
       </View>
 
-      {/* 한글 주석: 첫 로딩 시엔 스피너, 이후엔 리스트 */}
       {loading && posts.length === 0 ? (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color={colors.brand} />
-          <Text style={styles.loadingText}>피드 불러오는 중…</Text>
-        </View>
-      ) : error && posts.length === 0 ? (
-        <View style={styles.centerBox}>
-          <Text style={styles.errorTitle}>피드 로딩 실패</Text>
-          <Text style={styles.errorText}>{error}</Text>
-          <Pressable style={styles.retryBtn} onPress={refresh}>
-            <Text style={styles.retryText}>다시 시도</Text>
-          </Pressable>
+          <ActivityIndicator color={colors.brand[500]} />
+          <Text style={styles.centerText}>추천 피드 불러오는 중…</Text>
         </View>
       ) : (
         <FlatList
           data={posts}
-          keyExtractor={(p) => p.id}
-          renderItem={({ item }) => (
-            <PostCard
-              post={item}
-              onPress={() => router.push(`/post/${item.id}` as any)}
-            />
-          )}
-          // 한글 주석: Pull-to-refresh (아래로 당기면 새로고침)
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <FeedItem post={item} />}
+          contentContainerStyle={styles.feedContent}
+          contentInsetAdjustmentBehavior="automatic"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={refresh}
-              tintColor={colors.brand}
-              colors={[colors.brand]}
+              tintColor={colors.brand[400]}
+              colors={[colors.brand[500]]}
             />
           }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.brand[500]} />
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>
-                {activeCategory === 'all'
-                  ? '아직 게시글이 없어'
-                  : `${CATEGORY_LABELS[activeCategory]} 게시글이 없어`}
-              </Text>
-              <Text style={styles.emptyHint}>첫 글 써보는 건 어때?</Text>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyTitle}>아직 피드가 비어 있어</Text>
+              <Text style={styles.emptyText}>첫 운영 이야기를 남기면 다른 사장님들이 발견할 거야.</Text>
             </View>
           }
-          // 한글 주석: FlatList 기본 성능 튜닝
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={10}
         />
       )}
 
-      {/* 한글 주석: 우하단 FAB (글쓰기) */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => router.push('/write' as any)}
-      >
-        <Text style={styles.fabIcon}>✎</Text>
-      </Pressable>
+      {error ? (
+        <Pressable style={styles.errorBanner} onPress={refresh}>
+          <Text style={styles.errorText}>{error} · 다시 시도</Text>
+        </Pressable>
+      ) : null}
     </SafeAreaView>
   )
 }
 
-// ─────────────────────────────────────────────
-// 스타일
-// ─────────────────────────────────────────────
+function FeedItem({ post }: { post: Post }) {
+  return (
+    <PostCard
+      post={post}
+      onPress={() => router.push(`/post/${post.id}` as any)}
+    />
+  )
+}
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
   },
   header: {
-    height: 52,
+    minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing[4],
+    gap: spacing[3],
   },
-  logo: {
-    fontSize: 20,
-    fontFamily: 'Pretendard-Bold',
-    color: colors.textStrong,
-    letterSpacing: 2,
-  },
-  iconBtn: {
-    width: 32,
-    height: 32,
+  logoBox: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.sm,
+    backgroundColor: colors.brand[500],
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconChar: {
-    fontSize: 18,
+  logoGlyph: {
+    ...typography.logo,
+    fontSize: 15,
+    lineHeight: 18,
+    color: colors.onBrand,
   },
-  tabWrap: {
+  logoText: {
+    ...typography.heading2,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+  },
+  iconText: {
+    fontSize: 22,
+    color: colors.text.secondary,
+  },
+  writeButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brand[500],
+  },
+  writeButtonText: {
+    fontSize: 24,
+    color: colors.onBrand,
+    lineHeight: 26,
+  },
+  filterRow: {
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: colors.line.subtle,
   },
-  tabContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 16,
+  filterContent: {
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
+    gap: spacing[2],
+  },
+  chip: {
+    minHeight: 36,
+    paddingHorizontal: spacing[3],
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line.default,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  tab: {
-    paddingBottom: 2,
-    alignItems: 'center',
+  chipActive: {
+    backgroundColor: colors.bg.raised,
+    borderColor: colors.brand[600],
   },
-  tabText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+  chipText: {
+    ...typography.label,
+    color: colors.text.tertiary,
   },
-  tabTextActive: {
-    color: colors.textStrong,
-    fontFamily: 'Pretendard-SemiBold',
+  chipTextActive: {
+    color: colors.brand[300],
   },
-  tabIndicator: {
-    position: 'absolute',
-    bottom: -2,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: colors.brand,
-    borderRadius: 1,
+  feedContent: {
+    padding: spacing[3],
+    paddingBottom: 110,
+    gap: spacing[3],
   },
-  // ─────────────────────────────────────────────
-  // 로딩/에러 중앙 박스
-  // ─────────────────────────────────────────────
   centerBox: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
+    gap: spacing[3],
   },
-  loadingText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+  centerText: {
+    ...typography.meta,
+    color: colors.text.tertiary,
   },
-  errorTitle: {
-    fontSize: 16,
-    color: colors.textStrong,
-    fontFamily: 'Pretendard-SemiBold',
+  footerLoader: {
+    paddingVertical: spacing[5],
   },
-  errorText: {
-    fontSize: 13,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
-    textAlign: 'center',
-  },
-  retryBtn: {
-    marginTop: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: colors.brand,
-    borderRadius: 8,
-  },
-  retryText: {
-    fontSize: 14,
-    color: colors.textStrong,
-    fontFamily: 'Pretendard-SemiBold',
-  },
-  // ─────────────────────────────────────────────
-  // 빈 상태
-  // ─────────────────────────────────────────────
-  empty: {
-    padding: 48,
+  emptyBox: {
+    padding: spacing[8],
     alignItems: 'center',
-    gap: 6,
+    gap: spacing[2],
+  },
+  emptyTitle: {
+    ...typography.bodyEmphasis,
+    color: colors.text.primary,
   },
   emptyText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+    ...typography.meta,
+    color: colors.text.tertiary,
+    textAlign: 'center',
   },
-  emptyHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
-    opacity: 0.7,
-  },
-  // ─────────────────────────────────────────────
-  // FAB
-  // ─────────────────────────────────────────────
-  fab: {
+  errorBanner: {
     position: 'absolute',
-    right: 16,
-    bottom: 24,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.brand,
+    left: spacing[4],
+    right: spacing[4],
+    bottom: 94,
+    minHeight: 44,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    // 한글 주석: iOS/Android 모두에서 살짝 떠 보이게 하는 섀도우
-    shadowColor: colors.textStrong,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    backgroundColor: colors.bg.nested,
+    borderWidth: 1,
+    borderColor: colors.line.strong,
   },
-  fabIcon: {
-    fontSize: 22,
-    color: colors.textStrong,
-    fontFamily: 'Pretendard-Bold',
+  errorText: {
+    ...typography.metaEmphasis,
+    color: colors.text.secondary,
   },
 })

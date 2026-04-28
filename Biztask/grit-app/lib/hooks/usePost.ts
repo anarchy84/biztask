@@ -76,7 +76,7 @@ export function usePost(id: string | undefined): UsePostReturn {
       const [postRes, commentsRes] = await Promise.all([
         supabase
           .from('posts')
-          .select('*, author:profiles!author_id(*)')
+          .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
           .eq('id', id)
           .eq('is_deleted', false)
           .maybeSingle(),
@@ -94,7 +94,7 @@ export function usePost(id: string | undefined): UsePostReturn {
       }
       if (commentsRes.error) throw new Error(commentsRes.error.message)
 
-      let mappedPost = mapPost(postRes.data as PostRowWithAuthor)
+      let mappedPost = mapPost(postRes.data as unknown as PostRowWithAuthor)
       let mappedComments = mapComments(
         (commentsRes.data ?? []) as CommentRowWithAuthor[],
       )

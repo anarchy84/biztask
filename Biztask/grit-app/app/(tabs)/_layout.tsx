@@ -1,20 +1,10 @@
-// 한글 주석: V2 5탭 네비 (2026-04-28 갈아엎음)
+// 한글 주석: GRIT V2 하단 5탭 네비게이션
 //
-// ▣ V2 변경:
-//   - 5탭 구조: 홈 / 탐색 / [시크릿 라운지] / 알림 / 프로필
-//   - 가운데 시크릿 라운지 = 자물쇠 글로우 버튼 (시그니처)
-//     · 인증 안 되면 자물쇠 (lock) 아이콘
-//     · 인증 되면 sparkle 아이콘
-//   - 다크모드 톤
-//   - 글쓰기는 별도 모달로 분리 (하단 탭에서 제거)
-//
-// ▣ V1 → V2 매핑:
-//   - search.tsx → explore.tsx로 이름 변경 권장 (추후 코덱스가 처리)
-//   - write.tsx → 별도 모달(/post/new) 또는 글쓰기 FAB로 분리
-//   - profile.tsx (탭) ← 그대로 사용
+// ▣ 홈 / 탐색 / 시크릿 라운지 / 알림 / 프로필
+// ▣ 가운데 시크릿 라운지는 인증 상태에 따라 자물쇠/스파클 아이콘을 바꾼다.
 
 import { Tabs } from 'expo-router'
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { colors } from '@/constants/colors'
 import { typography } from '@/constants/typography'
 import { layout } from '@/constants/spacing'
@@ -36,76 +26,60 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: '홈',
-          tabBarIcon: ({ focused }) => <TabIcon label="🏠" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon label="⌂" focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="explore"
         options={{
           title: '탐색',
-          tabBarIcon: ({ focused }) => <TabIcon label="🔍" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon label="⌕" focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="write"
+        name="lounge"
         options={{
           title: '시크릿',
           tabBarIcon: () => <CenterLoungeButton />,
           tabBarLabelStyle: styles.tabLabelCenter,
-          // 한글 주석: write 탭 자리를 시크릿 라운지로 임시 연결
-          //   추후 코덱스가 lounge.tsx 신설 후 라우팅 정리
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
           title: '알림',
-          tabBarIcon: ({ focused }) => <TabIcon label="🔔" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon label="◔" focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: '프로필',
-          tabBarIcon: ({ focused }) => <TabIcon label="👤" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon label="◉" focused={focused} />,
         }}
       />
     </Tabs>
   )
 }
 
-// ─────────────────────────────────────────────
-// 일반 탭 아이콘 (이모지 기반, 추후 lucide로 교체)
-// ─────────────────────────────────────────────
-
 function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   return (
     <View style={styles.iconWrap}>
-      <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.6 }}>{label}</Text>
-      {focused && <View style={styles.activeDot} />}
+      <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>{label}</Text>
+      {focused ? <View style={styles.activeDot} /> : null}
     </View>
   )
 }
-
-// ─────────────────────────────────────────────
-// 가운데 시크릿 라운지 버튼 (자물쇠 글로우)
-//   - 인증 사장님: sparkle (✨)
-//   - 미인증:      자물쇠 (🔒)
-// ─────────────────────────────────────────────
 
 function CenterLoungeButton() {
   const { canViewSecretLounge } = useTier()
 
   return (
     <View style={styles.loungeButton}>
-      <Text style={styles.loungeIcon}>{canViewSecretLounge ? '✨' : '🔒'}</Text>
+      <Text style={styles.loungeIcon}>{canViewSecretLounge ? '✦' : '🔒'}</Text>
     </View>
   )
 }
-
-// ─────────────────────────────────────────────
-// 스타일
-// ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   tabBar: {
@@ -118,7 +92,6 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     ...typography.caption,
-    color: colors.text.tertiary,
     marginTop: 2,
   },
   tabLabelCenter: {
@@ -129,7 +102,14 @@ const styles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: 24,
+    height: 28,
+  },
+  tabIcon: {
+    fontSize: 22,
+    color: colors.text.tertiary,
+  },
+  tabIconActive: {
+    color: colors.text.primary,
   },
   activeDot: {
     width: 4,
@@ -138,8 +118,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand[400],
     marginTop: 2,
   },
-
-  // 한글 주석: 시크릿 라운지 가운데 버튼 - 시그니처
   loungeButton: {
     width: layout.centerTabSize,
     height: layout.centerTabSize,
@@ -149,11 +127,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: layout.centerTabMarginTop,
     borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.25)',
+    borderColor: colors.brand[400],
     ...secretLoungeGlow,
   },
   loungeIcon: {
     fontSize: 24,
     lineHeight: 28,
+    color: colors.onBrand,
   },
 })
