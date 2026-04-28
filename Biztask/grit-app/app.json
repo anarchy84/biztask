@@ -9,7 +9,11 @@
     "scheme": "grit",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "kr.grit.app"
+      "bundleIdentifier": "kr.grit.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "글에 첨부할 사진을 선택하기 위해 사진 라이브러리에 접근해.",
+        "NSCameraUsageDescription": "사진을 직접 촬영해서 글에 첨부하려면 카메라 권한이 필요해."
+      }
     },
     "android": {
       "package": "kr.grit.app",
@@ -23,7 +27,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "글에 첨부할 사진을 고르기 위해 사진 라이브러리에 접근해.",
+          "cameraPermission": "사진을 직접 촬영해서 글에 첨부하려면 카메라 권한이 필요해."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

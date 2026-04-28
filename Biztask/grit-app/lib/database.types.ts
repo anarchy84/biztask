@@ -148,6 +148,7 @@ export type Database = {
           industry: Database["public"]["Enums"]["industry"]
           is_npc: boolean
           nickname: string
+          onboarded: boolean
           updated_at: string
         }
         Insert: {
@@ -158,6 +159,7 @@ export type Database = {
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname: string
+          onboarded?: boolean
           updated_at?: string
         }
         Update: {
@@ -168,6 +170,7 @@ export type Database = {
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname?: string
+          onboarded?: boolean
           updated_at?: string
         }
         Relationships: []

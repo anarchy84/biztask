@@ -4,15 +4,14 @@
 //   - 모든 화면의 최상위 래퍼 (Expo Router v4의 Root Layout)
 //   - Pretendard 폰트 로딩 + 스플래시 화면 제어
 //   - AuthProvider로 앱 전역 익명 로그인·프로필 주입
-//   - Stack Navigator로 탭 화면 + 상세 화면 연결
+//   - Stack Navigator로 탭 화면 + 상세·로그인·온보딩 화면 연결
+//   - AuthGate가 온보딩 여부에 따라 자동 분기
 //
 // ▣ 폰트 로딩 전략:
 //   - Pretendard 폰트 파일이 assets/fonts/에 있으면 로드
 //   - 없으면 useFonts가 에러 반환하고 시스템 폰트로 fallback (크래시 안 남)
-//   - Phase 1 초기엔 폰트 파일 없이도 돌아가야 함 → try/catch 대신 require를 주석 처리해둠
-//   - 나중에 폰트 파일 넣으면 아래 주석 해제
 
-import { Stack } from 'expo-router'
+import { Stack, useRouter, useSegments } from 'expo-router'
 import { useFonts } from 'expo-font'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
@@ -27,12 +26,6 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 })
 
 export default function RootLayout() {
-  // 한글 주석: 폰트 로딩
-  //   - 빈 객체 넘기면 즉시 loaded=true (폰트 없이도 동작)
-  //   - 아래 주석 해제하려면:
-  //     1) https://github.com/orioncactus/pretendard/releases 에서 최신 릴리스 다운로드
-  //     2) web-static 폴더의 Pretendard-{Weight}.otf 파일들을 assets/fonts/에 복사
-  //     3) require 라인 주석 제거
   const [fontsLoaded, fontError] = useFonts({
     // 'Pretendard-Regular':  require('../assets/fonts/Pretendard-Regular.otf'),
     // 'Pretendard-Medium':   require('../assets/fonts/Pretendard-Medium.otf'),
@@ -41,13 +34,11 @@ export default function RootLayout() {
   })
 
   useEffect(() => {
-    // 한글 주석: 폰트 로딩 끝나면 (또는 에러 나면) 스플래시 숨김
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync().catch(() => {})
     }
   }, [fontsLoaded, fontError])
 
-  // 한글 주석: 폰트 로딩 중엔 빈 화면 유지 (스플래시가 계속 보임)
   if (!fontsLoaded && !fontError) {
     return null
   }
@@ -61,9 +52,41 @@ export default function RootLayout() {
           <Stack.Screen
             name="post/[id]"
             options={{
-              // 한글 주석: 글 상세는 모달 방식이 아니라 push 스택 (뒤로가기 버튼 자연스러움)
+              // 한글 주석: 글 상세는 push 스택 (뒤로가기 버튼 자연스러움)
               presentation: 'card',
               animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen
+            name="login"
+            options={{
+              // 한글 주석: 로그인은 모달 (시트 느낌으로 올라옴)
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+          <Stack.Screen
+            name="auth/callback"
+            options={{
+              // 한글 주석: OAuth 딥링크 fallback 처리 화면
+              animation: 'fade',
+            }}
+          />
+          <Stack.Screen
+            name="onboarding/nickname"
+            options={{
+              // 한글 주석: 온보딩은 가로 슬라이드 + 뒤로가기 제스처 비활성화
+              //   (온보딩 스킵 불가 - AuthGate가 강제 렌더)
+              gestureEnabled: false,
+              animation: 'fade',
+            }}
+          />
+          <Stack.Screen
+            name="profile/edit"
+            options={{
+              // 한글 주석: 프로필 편집은 모달 시트 느낌
+              presentation: 'modal',
+              animation: 'slide_from_bottom',
             }}
           />
         </Stack>
@@ -73,13 +96,46 @@ export default function RootLayout() {
 }
 
 // ─────────────────────────────────────────────
-// 한글 주석: 인증 초기화 동안 로딩 화면
-//   - 익명 로그인 + 프로필 fetch 끝나기 전엔 스택 렌더 지연
-//   - 덕분에 자식 컴포넌트에서 user/profile null 체크 간소화
+// 한글 주석: AuthGate - 인증 상태에 따른 라우팅 분기
+//
+// 상태별 동작:
+//   1) loading         → 로딩 스피너 (세션 + 프로필 fetch 중)
+//   2) profile 없음    → 에러 화면 (트리거 실패 등 극히 드문 케이스)
+//   3) 온보딩 필요     → /onboarding/nickname 강제 리다이렉트
+//      (소셜 로그인 + onboarded=false)
+//   4) 정상            → 현재 라우트 그대로 렌더
 // ─────────────────────────────────────────────
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { loading, profile } = useAuth()
+  const { loading, profile, isOnboarded } = useAuth()
+  const router = useRouter()
+  const segments = useSegments()
+
+  // 한글 주석: 온보딩 필요 시 강제 리다이렉트
+  //   - useSegments로 현재 라우트 확인해서 이미 온보딩 중이면 push 반복 방지
+  useEffect(() => {
+    if (loading || !profile) return
+
+    // 한글 주석: typedRoutes가 segments를 탭 라우트로만 좁혀놔서 string 캐스팅 필요
+    const firstSegment = segments[0] as string | undefined
+    const onOnboarding = firstSegment === 'onboarding'
+    const onLogin = firstSegment === 'login'
+    const onAuthCallback = firstSegment === 'auth'
+
+    // 한글 주석: 소셜 로그인했는데 닉네임 미설정 → 온보딩으로
+    //   - 로그인 화면은 패스 (소셜 버튼 눌러야 여기까지 옴)
+    //   - OAuth 콜백 화면은 토큰 처리 후 직접 이동해야 하므로 패스
+    //   - 익명은 isOnboarded=true 취급이라 여기 안 걸림
+    if (!isOnboarded && !onOnboarding && !onLogin && !onAuthCallback) {
+      router.replace('/onboarding/nickname' as any)
+      return
+    }
+
+    // 한글 주석: 이미 온보딩 끝났는데 온보딩 화면에 있으면 홈으로
+    if (isOnboarded && onOnboarding) {
+      router.replace('/(tabs)' as any)
+    }
+  }, [loading, profile, isOnboarded, segments, router])
 
   if (loading) {
     return (

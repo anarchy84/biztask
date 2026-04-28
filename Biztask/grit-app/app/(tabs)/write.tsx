@@ -23,11 +23,13 @@ import {
   Alert,
   ActivityIndicator,
   Keyboard,
+  Image,
 } from 'react-native'
 import { router } from 'expo-router'
 import { colors } from '@/constants/colors'
 import { Category, CATEGORY_LABELS } from '@/lib/types'
 import { usePostSubmit } from '@/lib/hooks/usePostSubmit'
+import { useImageUpload } from '@/lib/hooks/useImageUpload'
 
 // 한글 주석: 실제 발행 가능한 카테고리 (hot·all은 필터용)
 type WritableCategory = Exclude<Category, 'all' | 'hot'>
@@ -37,6 +39,8 @@ export default function WriteScreen() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [category, setCategory] = useState<WritableCategory>('worry')
+  // 한글 주석: 첨부 이미지 URL (Supabase Storage 공개 URL)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   // 한글 주석: 발행 훅 (성공 시 상세 화면으로 replace)
   const { submit, submitting, error, clearError } = usePostSubmit({
@@ -45,13 +49,34 @@ export default function WriteScreen() {
       //   - router.replace를 쓰면 뒤로 갈 때 글쓰기 화면으로 돌아가지 않음
       setTitle('')
       setBody('')
+      setImageUrl(null)
       Keyboard.dismiss()
       router.replace(`/post/${post.id}` as any)
     },
   })
 
+  // 한글 주석: 이미지 업로드 훅
+  const {
+    pickAndUpload,
+    uploading: imageUploading,
+    error: imageError,
+    clearError: clearImageError,
+  } = useImageUpload({ bucket: 'post-images' })
+
   const canSubmit =
-    title.trim().length >= 2 && body.trim().length >= 5 && !submitting
+    title.trim().length >= 2 &&
+    body.trim().length >= 5 &&
+    !submitting &&
+    !imageUploading
+
+  // 한글 주석: 사진 첨부 핸들러
+  const handlePickImage = async () => {
+    if (imageUploading || submitting) return
+    if (error) clearError()
+    if (imageError) clearImageError()
+    const url = await pickAndUpload()
+    if (url) setImageUrl(url)
+  }
 
   const handleSubmit = async () => {
     if (!canSubmit) return
@@ -66,7 +91,7 @@ export default function WriteScreen() {
           text: '발행',
           style: 'default',
           onPress: async () => {
-            await submit({ title, body, category })
+            await submit({ title, body, category, imageUrl })
           },
         },
       ],
@@ -97,10 +122,16 @@ export default function WriteScreen() {
         </Pressable>
       </View>
 
-      {/* 한글 주석: 에러 배너 (있을 때만) */}
+      {/* 한글 주석: 에러 배너 (글 작성 / 이미지 업로드 둘 다 표시) */}
       {error && (
         <Pressable style={styles.errorBanner} onPress={clearError}>
           <Text style={styles.errorBannerText}>{error}</Text>
+          <Text style={styles.errorBannerClose}>✕</Text>
+        </Pressable>
+      )}
+      {imageError && (
+        <Pressable style={styles.errorBanner} onPress={clearImageError}>
+          <Text style={styles.errorBannerText}>{imageError}</Text>
           <Text style={styles.errorBannerClose}>✕</Text>
         </Pressable>
       )}
@@ -164,6 +195,52 @@ export default function WriteScreen() {
         />
 
         <Text style={styles.counter}>{body.length} / 2000</Text>
+
+        {/* 한글 주석: 사진 첨부 영역 */}
+        <Text style={styles.label}>사진 (선택)</Text>
+        {imageUrl ? (
+          // 한글 주석: 첨부된 이미지 미리보기 + 제거 버튼
+          <View style={styles.imagePreviewBox}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.imagePreview}
+              resizeMode="cover"
+            />
+            <Pressable
+              style={styles.imageRemoveBtn}
+              onPress={() => setImageUrl(null)}
+              disabled={submitting}
+              hitSlop={8}
+            >
+              <Text style={styles.imageRemoveBtnText}>✕</Text>
+            </Pressable>
+          </View>
+        ) : (
+          // 한글 주석: 사진 첨부 버튼 (업로드 중엔 스피너)
+          <Pressable
+            style={[
+              styles.imagePickBtn,
+              (imageUploading || submitting) && styles.imagePickBtnDisabled,
+            ]}
+            onPress={handlePickImage}
+            disabled={imageUploading || submitting}
+          >
+            {imageUploading ? (
+              <>
+                <ActivityIndicator size="small" color={colors.textBrand} />
+                <Text style={styles.imagePickBtnText}>업로드 중…</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.imagePickBtnIcon}>📷</Text>
+                <Text style={styles.imagePickBtnText}>사진 첨부하기</Text>
+              </>
+            )}
+          </Pressable>
+        )}
+
+        {/* 한글 주석: 하단 여백 (키보드 가림 방지) */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   )
@@ -291,5 +368,60 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginTop: 4,
     fontFamily: 'Pretendard-Regular',
+  },
+
+  // 사진 첨부 버튼 (이미지 없을 때)
+  imagePickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: colors.bgElevated,
+  },
+  imagePickBtnDisabled: {
+    opacity: 0.5,
+  },
+  imagePickBtnIcon: {
+    fontSize: 18,
+  },
+  imagePickBtnText: {
+    fontSize: 13,
+    fontFamily: 'Pretendard-Medium',
+    color: colors.textMuted,
+  },
+
+  // 첨부된 이미지 미리보기
+  imagePreviewBox: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.bgMuted,
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageRemoveBtnText: {
+    fontSize: 14,
+    fontFamily: 'Pretendard-Bold',
+    color: '#FFFFFF',
   },
 })

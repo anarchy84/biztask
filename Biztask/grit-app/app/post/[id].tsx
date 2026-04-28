@@ -29,6 +29,7 @@ import {
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
+  Image,
 } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Post, Comment, INDUSTRY_META } from '@/lib/types'
@@ -211,6 +212,15 @@ export default function PostDetailScreen() {
 
             {/* 본문 */}
             <Text style={styles.content}>{post.body}</Text>
+
+            {/* 한글 주석: 첨부 이미지 (있을 때만) */}
+            {post.thumbnailUrl && (
+              <Image
+                source={{ uri: post.thumbnailUrl }}
+                style={styles.contentImage}
+                resizeMode="cover"
+              />
+            )}
 
             {/* 좋아요/싫어요 버튼 */}
             <View style={styles.reactRow}>
@@ -552,6 +562,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Pretendard-Regular',
     lineHeight: 25,
     marginTop: 14,
+  },
+  contentImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    marginTop: 16,
+    borderRadius: 10,
+    backgroundColor: colors.bgMuted,
   },
 
   // 좋아요/싫어요

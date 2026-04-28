@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>그릿 — Premium SNS for 사장님</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="styles.css?v=4" />
+<style>
+  html, body { margin: 0; padding: 0; background: #0A0A0A; color: #fff; font-family: 'Pretendard Variable', Pretendard, system-ui, sans-serif; }
+  #root { width: 100vw; height: 100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="primitives.jsx"></script>
+<script type="text/babel" src="post-card.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="screens-mobile.jsx"></script>
+<script type="text/babel" src="screens-pc.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "dark",
+  "accent": "emerald",
+  "density": "loose",
+  "cardStyle": "border",
+  "profileLayout": "stacked",
+  "gritStyle": "level"
+}/*EDITMODE-END*/;
+
+// Apply theme to root
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t.theme);
+  // Single-family accent — three deep, business-y green directions
+  const accent = {
+    emerald: { 500: '#059669', 400: '#10B981', 300: '#34D399', 200: '#6EE7B7', glow: '16,185,129' },
+    forest:  { 500: '#0F766E', 400: '#14B8A6', 300: '#5EEAD4', 200: '#99F6E4', glow: '20,184,166' },
+    jade:    { 500: '#15803D', 400: '#22C55E', 300: '#4ADE80', 200: '#86EFAC', glow: '34,197,94' },
+  }[t.accent];
+  if (accent) {
+    document.documentElement.style.setProperty('--brand-500', accent[500]);
+    document.documentElement.style.setProperty('--brand-400', accent[400]);
+    document.documentElement.style.setProperty('--brand-300', accent[300]);
+    document.documentElement.style.setProperty('--brand-200', accent[200]);
+    document.documentElement.style.setProperty('--brand-glow', accent.glow);
+  }
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  React.useEffect(() => { applyTheme(t); }, [t.theme, t.accent]);
+
+  // Phone wrapper that hosts a screen + bottom tab bar
+  const Phone = ({ tab, children, dark = true }) => (
+    <IOSDevice width={390} height={780} dark={dark}>
+      <div style={{
+        height: "100%", overflow: "auto", position: "relative",
+        background: "var(--bg-0)",
+      }} className="no-scrollbar">
+        {children}
+        <TabBar active={tab} />
+      </div>
+    </IOSDevice>
+  );
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="overview" title="그릿" subtitle="프리미엄 사장님 SNS · 모바일 5탭 + PC 3단 컬럼 + Tweaks로 6가지 옵션 토글">
+
+          <DCArtboard id="home" label="모바일 · 홈 피드" width={390} height={780}>
+            <Phone tab="home"><HomeScreen density={t.density} cardStyle={t.cardStyle} /></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="explore" label="모바일 · 탐색/네트워크" width={390} height={780}>
+            <Phone tab="explore"><ExploreScreen cardStyle={t.cardStyle} /></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="lounge" label="모바일 · 시크릿 라운지" width={390} height={780}>
+            <Phone tab="lounge"><LoungeScreen /></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="alerts" label="모바일 · 알림" width={390} height={780}>
+            <Phone tab="alerts"><NotificationsScreen /></Phone>
+          </DCArtboard>
+
+          <DCArtboard id="profile" label="모바일 · 프로필" width={390} height={780}>
+            <Phone tab="profile"><ProfileScreen profileLayout={t.profileLayout} gritStyle={t.gritStyle} /></Phone>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="pc" title="PC · 데스크탑 웹" subtitle="3단 컬럼 — 좌측 네비 / 중앙 피드 / 우측 트렌드 + 매칭">
+          <DCArtboard id="pc-home" label="홈 피드" width={1280} height={820}>
+            <PCLayout density={t.density} cardStyle={t.cardStyle} />
+          </DCArtboard>
+        </DCSection>
+
+      </DesignCanvas>
+
+      <TweaksPanel title="그릿 Tweaks">
+        <TweakSection label="테마" />
+        <TweakRadio label="모드" value={t.theme} options={["dark", "light"]}
+          onChange={(v) => setTweak("theme", v)} />
+        <TweakRadio label="포인트 컬러" value={t.accent}
+          options={[
+            { value: "emerald", label: "에메랄드" },
+            { value: "forest", label: "포레스트" },
+            { value: "jade", label: "제이드" },
+          ]} onChange={(v) => setTweak("accent", v)} />
+
+        <TweakSection label="밀도 / 카드" />
+        <TweakRadio label="정보 밀도" value={t.density}
+          options={[
+            { value: "tight", label: "타이트" },
+            { value: "regular", label: "기본" },
+            { value: "loose", label: "널널" },
+          ]} onChange={(v) => setTweak("density", v)} />
+        <TweakRadio label="카드 스타일" value={t.cardStyle}
+          options={[
+            { value: "border", label: "보더" },
+            { value: "shadow", label: "그림자" },
+            { value: "glass", label: "글래스" },
+          ]} onChange={(v) => setTweak("cardStyle", v)} />
+
+        <TweakSection label="프로필 / 그릿 지수" />
+        <TweakRadio label="프로필 레이아웃" value={t.profileLayout}
+          options={[
+            { value: "stacked", label: "스택" },
+            { value: "card", label: "글래스카드" },
+          ]} onChange={(v) => setTweak("profileLayout", v)} />
+        <TweakRadio label="그릿 시각화" value={t.gritStyle}
+          options={[
+            { value: "ring", label: "링" },
+            { value: "bar", label: "바" },
+            { value: "level", label: "레벨" },
+            { value: "radar", label: "레이더" },
+          ]} onChange={(v) => setTweak("gritStyle", v)} />
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
