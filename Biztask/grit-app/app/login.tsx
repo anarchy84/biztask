@@ -1,317 +1,367 @@
-// 한글 주석: 로그인 화면 (모달 스타일로 뜸)
+// 한글 주석: V2 로그인/가입 화면 (2026-04-28 갈아엎음)
 //
-// ▣ 이 화면이 하는 일:
-//   - 카카오·구글 소셜 로그인 버튼
-//   - 익명 세션에서 소셜 계정 업그레이드 (linkIdentity)
-//   - 성공 시 자동으로 상위 라우트 pop → AuthGate가 온보딩 여부 판정
+// ▣ 변경 핵심:
+//   - 메인: 이메일 + 비번 가입/로그인 (Supabase auth.signUp / signInWithPassword)
+//   - 서브: 카카오/구글/메타 버튼은 표시만 (전부 disabled, "준비 중" 토스트)
+//   - 가입 후 → AuthGate가 /onboarding/nickname으로 자동 이동
 //
-// ▣ 진입 경로:
-//   - 프로필 탭의 "로그인" 버튼
-//   - 향후: 글쓰기/알림 등 로그인 필수 액션 시 리다이렉트
-//
-// ▣ 디자인 원칙:
-//   - 카카오: 공식 가이드라인 준수 (노란색 + 검은 말풍선 로고 컨셉 이모지로 대체)
-//   - 구글: 흰 배경 + 구글 컬러 로고 이모지
-//   - 실제 SVG 로고는 Phase 3-2에서 교체 예정
+// ▣ 디자인:
+//   - V2 다크 + 그린 액센트
+//   - 이메일/비번 입력 + 회원가입↔로그인 토글
+//   - OAuth 버튼은 회색 톤 + "준비 중" 라벨
 
-import React from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  Pressable,
   ActivityIndicator,
-  StatusBar,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native'
 import { router } from 'expo-router'
 import { colors } from '@/constants/colors'
-import { useSocialLogin } from '@/lib/hooks/useSocialLogin'
-import { useAuth } from '@/contexts/AuthContext'
+import { typography } from '@/constants/typography'
+import { radius, spacing } from '@/constants/spacing'
+import { ctaShadow } from '@/constants/shadows'
+import { useEmailAuth } from '@/lib/hooks/useEmailAuth'
 import {
   getSocialProviderConfig,
-  isSocialProviderEnabled,
   type SocialProvider,
 } from '@/lib/socialProviders'
 
-export default function LoginScreen() {
-  const { login, loading, activeProvider, error, clearError } = useSocialLogin()
-  const { isAnonymous } = useAuth()
-  const kakaoEnabled = isSocialProviderEnabled('kakao')
-  const kakaoConfig = getSocialProviderConfig('kakao')
-  const googleConfig = getSocialProviderConfig('google')
+type AuthMode = 'signin' | 'signup'
 
-  // ─────────────────────────────────────────────
-  // 한글 주석: 로그인 버튼 핸들러
-  //   - 성공하면 뒤로 가기 (모달 닫힘 → AuthGate가 온보딩 체크)
-  // ─────────────────────────────────────────────
-  const handleLogin = async (provider: SocialProvider) => {
-    if (loading) return
-    const ok = await login(provider)
+export default function LoginScreen() {
+  const [mode, setMode] = useState<AuthMode>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const { signUp, signIn, loading, error, clearError } = useEmailAuth()
+
+  // 한글 주석: 가입/로그인 토글
+  const toggleMode = useCallback(() => {
+    setMode((prev) => (prev === 'signin' ? 'signup' : 'signin'))
+    clearError()
+  }, [clearError])
+
+  // 한글 주석: 이메일 가입/로그인 제출
+  const handleSubmit = useCallback(async () => {
+    const ok =
+      mode === 'signup'
+        ? await signUp(email, password)
+        : await signIn(email, password)
     if (ok) {
-      // 한글 주석: 로그인 성공 → 이전 화면으로 돌아감
-      //   - 온보딩이 필요하면 _layout의 AuthGate가 자동으로 /onboarding으로 보냄
-      if (router.canGoBack()) {
-        router.back()
-      } else {
-        router.replace('/(tabs)' as any)
-      }
+      // 한글 주석: AuthGate가 onboarded 체크해서 닉네임 화면 또는 홈으로
+      router.replace('/(tabs)' as any)
     }
-  }
+  }, [mode, email, password, signUp, signIn])
+
+  // 한글 주석: 비활성 OAuth 버튼 누르면 안내
+  const handleSocialClick = useCallback((provider: SocialProvider) => {
+    const cfg = getSocialProviderConfig(provider)
+    Alert.alert(
+      '아직 준비 중이야',
+      cfg.unavailableMessage ?? '잠시 후 다시 시도해줘',
+    )
+  }, [])
+
+  // 한글 주석: 이메일+비번 유효성 (버튼 활성/비활성)
+  const canSubmit = useMemo(() => {
+    return email.trim().length > 0 && password.length >= 6 && !loading
+  }, [email, password, loading])
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg.base} />
-
-      {/* 상단 닫기 버튼 (모달처럼 취급) */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => {
-            if (router.canGoBack()) router.back()
-            else router.replace('/(tabs)' as any)
-          }}
-          style={styles.closeBtn}
-          hitSlop={12}
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.closeIcon}>✕</Text>
-        </Pressable>
-      </View>
+          {/* ─── 헤더 ─── */}
+          <View style={styles.header}>
+            <View style={styles.logoBox}>
+              <Text style={styles.logoGlyph}>그</Text>
+            </View>
+            <Text style={styles.title}>
+              {mode === 'signup' ? '그릿 시작하기' : '그릿 로그인'}
+            </Text>
+            <Text style={styles.subtitle}>
+              {mode === 'signup'
+                ? '사장님들의 비즈니스 라운지'
+                : '다시 만나서 반가워'}
+            </Text>
+          </View>
 
-      {/* 중앙 로고 + 헤드라인 */}
-      <View style={styles.hero}>
-        <Text style={styles.logo}>GRIT</Text>
-        <Text style={styles.headline}>사장님들의 쉼터</Text>
-        <Text style={styles.subhead}>
-          {isAnonymous
-            ? '로그인해서 쌓은 기록을 지켜두자'
-            : '로그인 후 계속 이용해줘'}
-        </Text>
-      </View>
+          {/* ─── 이메일 가입/로그인 폼 ─── */}
+          <View style={styles.form}>
+            <TextInput
+              style={styles.input}
+              placeholder="이메일"
+              placeholderTextColor={colors.text.tertiary}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              value={email}
+              onChangeText={(v) => {
+                setEmail(v)
+                if (error) clearError()
+              }}
+              editable={!loading}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="비밀번호 (6자 이상)"
+              placeholderTextColor={colors.text.tertiary}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              value={password}
+              onChangeText={(v) => {
+                setPassword(v)
+                if (error) clearError()
+              }}
+              editable={!loading}
+              onSubmitEditing={canSubmit ? handleSubmit : undefined}
+            />
 
-      {/* 에러 배너 */}
-      {error && (
-        <Pressable style={styles.errorBanner} onPress={clearError}>
-          <Text style={styles.errorBannerText}>{error}</Text>
-          <Text style={styles.errorBannerClose}>✕</Text>
-        </Pressable>
-      )}
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      {/* 로그인 버튼들 */}
-      <View style={styles.buttonGroup}>
-        {/* 카카오 */}
-        <Pressable
-          style={[
-            styles.btn,
-            styles.btnKakao,
-            (!kakaoEnabled || loading) && styles.btnDisabled,
-          ]}
-          onPress={() => handleLogin('kakao')}
-          disabled={loading || !kakaoEnabled}
-        >
-          {loading && activeProvider === 'kakao' ? (
-            <ActivityIndicator size="small" color="#3C1E1E" />
-          ) : (
-            <>
-              <Text style={styles.btnIconKakao}>💬</Text>
-              <Text style={styles.btnTextKakao}>{kakaoConfig.buttonLabel}</Text>
-            </>
-          )}
-        </Pressable>
+            <Pressable
+              style={[styles.primaryButton, !canSubmit && styles.buttonDisabled]}
+              onPress={canSubmit ? handleSubmit : undefined}
+              accessibilityRole="button"
+              accessibilityLabel={mode === 'signup' ? '회원가입' : '로그인'}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.onBrand} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {mode === 'signup' ? '회원가입' : '로그인'}
+                </Text>
+              )}
+            </Pressable>
 
-        {/* 구글 */}
-        <Pressable
-          style={[styles.btn, styles.btnGoogle, loading && styles.btnDisabled]}
-          onPress={() => handleLogin('google')}
-          disabled={loading}
-        >
-          {loading && activeProvider === 'google' ? (
-            <ActivityIndicator size="small" color={colors.text.primary} />
-          ) : (
-            <>
-              <Text style={styles.btnIconGoogle}>G</Text>
-              <Text style={styles.btnTextGoogle}>{googleConfig.buttonLabel}</Text>
-            </>
-          )}
-        </Pressable>
+            <Pressable onPress={toggleMode} style={styles.toggleLink}>
+              <Text style={styles.toggleText}>
+                {mode === 'signup'
+                  ? '이미 계정이 있어? 로그인하기'
+                  : '아직 회원이 아니야? 가입하기'}
+              </Text>
+            </Pressable>
+          </View>
 
-        {/* 한글 주석: 애플은 추후 추가 예정 (개발자 계정 발급 후) */}
-      </View>
-      {!kakaoEnabled && (
-        <Text style={styles.providerHint}>
-          카카오 로그인은 비즈앱 전환 전까지 준비중이야. 지금은 구글 로그인을
-          이용해줘.
-        </Text>
-      )}
+          {/* ─── 구분선 ─── */}
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>또는</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
-      {/* 익명 유지 옵션 (하단) */}
-      <View style={styles.anonymousBox}>
-        <Pressable
-          onPress={() => {
-            if (router.canGoBack()) router.back()
-            else router.replace('/(tabs)' as any)
-          }}
-        >
-          <Text style={styles.anonymousText}>
-            {isAnonymous
-              ? '나중에 로그인할게 →'
-              : '익명으로 둘러보기 →'}
-          </Text>
-        </Pressable>
-      </View>
+          {/* ─── 소셜 로그인 (전부 disabled) ─── */}
+          <View style={styles.socialBox}>
+            <SocialButton provider="kakao" onPress={handleSocialClick} />
+            <SocialButton provider="google" onPress={handleSocialClick} />
+            <SocialButton provider="meta" onPress={handleSocialClick} />
+            <Text style={styles.socialNote}>
+              소셜 로그인은 곧 열려. 지금은 이메일로 시작해줘.
+            </Text>
+          </View>
 
-      {/* 하단 약관 안내 */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          로그인하면 이용약관 및 개인정보 처리방침에{'\n'}동의하는 것으로 간주돼요
-        </Text>
-      </View>
+          {/* ─── 닫기 (모달이라 뒤로) ─── */}
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.closeLink}
+            accessibilityRole="button"
+            accessibilityLabel="닫기"
+          >
+            <Text style={styles.closeText}>나중에 할게</Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
+
+// ─────────────────────────────────────────────
+// 한글 주석: 비활성 소셜 버튼
+// ─────────────────────────────────────────────
+
+function SocialButton({
+  provider,
+  onPress,
+}: {
+  provider: SocialProvider
+  onPress: (provider: SocialProvider) => void
+}) {
+  const cfg = getSocialProviderConfig(provider)
+  const icon = provider === 'kakao' ? '💬' : provider === 'google' ? 'G' : 'f'
+
+  return (
+    <Pressable
+      style={[styles.socialButton, !cfg.enabled && styles.socialButtonDisabled]}
+      onPress={() => onPress(provider)}
+      accessibilityRole="button"
+      accessibilityLabel={cfg.buttonLabel}
+    >
+      <Text style={styles.socialIcon}>{icon}</Text>
+      <Text style={styles.socialLabel}>{cfg.buttonLabel}</Text>
+    </Pressable>
+  )
+}
+
+// ─────────────────────────────────────────────
+// 스타일
+// ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.bg.base,
   },
-  header: {
-    height: 48,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeIcon: {
-    fontSize: 20,
-    color: colors.text.primary,
-  },
-  hero: {
-    alignItems: 'center',
-    paddingTop: 40,
-    paddingBottom: 60,
-  },
-  logo: {
-    fontSize: 48,
-    fontFamily: 'Pretendard-Bold',
-    color: colors.text.primary,
-    letterSpacing: 4,
-    marginBottom: 16,
-  },
-  headline: {
-    fontSize: 20,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.text.primary,
-    marginBottom: 8,
-  },
-  subhead: {
-    fontSize: 14,
-    fontFamily: 'Pretendard-Regular',
-    color: colors.text.tertiary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    borderRadius: 8,
-  },
-  errorBannerText: {
+  kav: {
     flex: 1,
-    fontSize: 12,
-    color: '#991B1B',
-    fontFamily: 'Pretendard-Medium',
   },
-  errorBannerClose: {
-    fontSize: 14,
-    color: '#991B1B',
-    marginLeft: 8,
+  scroll: {
+    flexGrow: 1,
+    padding: spacing[5],
+    gap: spacing[5],
   },
-  buttonGroup: {
-    paddingHorizontal: 20,
-    gap: 10,
+  // ── 헤더
+  header: {
+    alignItems: 'center',
+    gap: spacing[3],
+    marginTop: spacing[6],
   },
-  providerHint: {
-    marginTop: 12,
-    paddingHorizontal: 28,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-    color: colors.text.tertiary,
-    fontFamily: 'Pretendard-Regular',
-  },
-  btn: {
-    flexDirection: 'row',
+  logoBox: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
+    backgroundColor: colors.brand[500],
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    height: 52,
-    borderRadius: 10,
   },
-  btnDisabled: {
+  logoGlyph: {
+    ...typography.heading2,
+    color: colors.onBrand,
+    fontWeight: '800',
+  },
+  title: {
+    ...typography.heading1,
+    color: colors.text.primary,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.text.secondary,
+  },
+  // ── 폼
+  form: {
+    gap: spacing[3],
+  },
+  input: {
+    height: 52,
+    paddingHorizontal: spacing[4],
+    borderRadius: radius.md,
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+    color: colors.text.primary,
+    fontSize: 15,
+    fontFamily: typography.body.fontFamily,
+  },
+  errorText: {
+    ...typography.meta,
+    color: colors.semantic.like,
+    marginTop: -spacing[1],
+  },
+  primaryButton: {
+    height: 52,
+    borderRadius: radius.md,
+    backgroundColor: colors.brand[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...ctaShadow,
+  },
+  buttonDisabled: {
     opacity: 0.5,
   },
-  // 카카오 공식 컬러 (#FEE500)
-  btnKakao: {
-    backgroundColor: '#FEE500',
+  primaryButtonText: {
+    ...typography.buttonPrimary,
+    color: colors.onBrand,
+    fontWeight: '600',
   },
-  btnIconKakao: {
-    fontSize: 18,
+  toggleLink: {
+    alignSelf: 'center',
+    paddingVertical: spacing[2],
   },
-  btnTextKakao: {
-    fontSize: 15,
-    fontFamily: 'Pretendard-SemiBold',
-    color: '#3C1E1E',
+  toggleText: {
+    ...typography.label,
+    color: colors.brand[400],
   },
-  // 구글: 흰 배경 + 테두리
-  btnGoogle: {
-    backgroundColor: colors.bg.base,
-    borderWidth: 1,
-    borderColor: colors.line.strong,
-  },
-  btnIconGoogle: {
-    fontSize: 18,
-    fontFamily: 'Pretendard-Bold',
-    color: '#4285F4',
-  },
-  btnTextGoogle: {
-    fontSize: 15,
-    fontFamily: 'Pretendard-SemiBold',
-    color: colors.text.primary,
-  },
-  anonymousBox: {
+  // ── 구분선
+  divider: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 28,
+    gap: spacing[3],
   },
-  anonymousText: {
-    fontSize: 13,
-    fontFamily: 'Pretendard-Medium',
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.line.default,
+  },
+  dividerText: {
+    ...typography.meta,
     color: colors.text.tertiary,
-    textDecorationLine: 'underline',
   },
-  footer: {
-    position: 'absolute',
-    bottom: 32,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 24,
+  // ── 소셜
+  socialBox: {
+    gap: spacing[2],
   },
-  footerText: {
-    fontSize: 11,
-    fontFamily: 'Pretendard-Regular',
+  socialButton: {
+    height: 52,
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[2],
+    backgroundColor: colors.bg.surface,
+    borderWidth: 1,
+    borderColor: colors.line.default,
+  },
+  socialButtonDisabled: {
+    opacity: 0.45,
+  },
+  socialIcon: {
+    fontSize: 18,
+    color: colors.text.secondary,
+    fontWeight: '700',
+  },
+  socialLabel: {
+    ...typography.label,
+    color: colors.text.secondary,
+  },
+  socialNote: {
+    ...typography.caption,
     color: colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: 17,
+    marginTop: spacing[2],
+  },
+  // ── 닫기
+  closeLink: {
+    alignSelf: 'center',
+    paddingVertical: spacing[3],
+  },
+  closeText: {
+    ...typography.label,
+    color: colors.text.tertiary,
   },
 })
