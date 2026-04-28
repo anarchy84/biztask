@@ -166,11 +166,15 @@ async function fetchRankedIds(
   }
 }
 
+// 한글 주석: PostgREST self-relation cache 이슈 회피
+//   posts → posts (quoted_post_id) 자기참조 FK는 PostgREST cache가
+//   불안정하게 인식 → quoted nested select 제거.
+//   인용글 본문이 필요하면 별도 fetch로 분리 (quoted_post_id로 IN 쿼리).
 async function fetchRowsByIds(ids: string[]): Promise<PostRowWithAuthor[]> {
   if (ids.length === 0) return []
   const { data, error } = await supabase
     .from('posts')
-    .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
+    .select('*, author:profiles!author_id(*)')
     .eq('is_deleted', false)
     .in('id', ids)
 
@@ -181,7 +185,7 @@ async function fetchRowsByIds(ids: string[]): Promise<PostRowWithAuthor[]> {
 async function fetchLatestRows(limit: number, offset: number): Promise<PostRowWithAuthor[]> {
   const { data, error } = await supabase
     .from('posts')
-    .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
+    .select('*, author:profiles!author_id(*)')
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
