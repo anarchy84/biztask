@@ -74,9 +74,12 @@ export function usePost(id: string | undefined): UsePostReturn {
     try {
       // 1) post + comments 병렬 조회 (네트워크 왕복 최소화)
       const [postRes, commentsRes] = await Promise.all([
+        // 한글 주석: PostgREST self-relation cache 이슈 회피
+        //   posts → posts (quoted_post_id) 자기참조는 cache 인식 불안정.
+        //   인용글 본문이 필요하면 별도 fetch (quoted_post_id 있을 때만).
         supabase
           .from('posts')
-          .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
+          .select('*, author:profiles!author_id(*)')
           .eq('id', id)
           .eq('is_deleted', false)
           .maybeSingle(),

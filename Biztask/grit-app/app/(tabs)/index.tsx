@@ -39,35 +39,23 @@ export default function HomeFeedScreen() {
           <Text style={styles.logoGlyph}>그</Text>
         </View>
         <Text style={styles.logoText}>그릿</Text>
-        {/* 한글 주석: 글쓰기 + 버튼은 가운데 탭으로 통합됨 (중복 제거) */}
+        {/* 한글 주석: 글쓰기는 가운데 탭, 검색은 탐색 탭에 통합됨
+              헤더 우상단은 시크릿 라운지 빠른 진입점 (자물쇠) */}
         <View style={styles.headerActions}>
-          <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel="검색">
-            <Text style={styles.iconText}>⌕</Text>
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => router.push('/(tabs)/lounge' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="시크릿 라운지"
+          >
+            <Text style={styles.iconText}>🔒</Text>
           </Pressable>
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        <FlatList
-          horizontal
-          data={FILTERS}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterContent}
-          renderItem={({ item }) => (
-            <Pressable
-              style={[styles.chip, item === filter && styles.chipActive]}
-              onPress={() => setFilter(item)}
-              accessibilityRole="button"
-              accessibilityLabel={`${FEED_FILTER_LABELS[item]} 필터`}
-            >
-              <Text style={[styles.chipText, item === filter && styles.chipTextActive]}>
-                {FEED_FILTER_LABELS[item]}
-              </Text>
-            </Pressable>
-          )}
-        />
-      </View>
+      {/* 한글 주석: 칩 필터는 추천 알고리즘과 함께 정밀 구현 예정 (Phase 7).
+            사용자가 "목적 모름"이라고 피드백 → 임시 숨김 처리.
+            FILTERS / setFilter / filter는 hook에서 여전히 동작하므로 추후 다시 노출만 하면 됨 */}
 
       {loading && posts.length === 0 ? (
         <View style={styles.centerBox}>

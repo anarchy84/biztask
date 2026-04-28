@@ -124,7 +124,13 @@ export default function LoginScreen() {
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              // 한글 주석: iOS Strong Password 자동 추천 비활성화
+              //   autoComplete="new-password" 켜면 입력 영역 위에
+              //   "Automatic Strong Password" 박스가 떠서 입력을 가림.
+              //   textContentType="oneTimeCode"가 가장 깔끔한 회피책.
+              autoComplete="off"
+              textContentType="oneTimeCode"
+              passwordRules=""
               value={password}
               onChangeText={(v) => {
                 setPassword(v)
