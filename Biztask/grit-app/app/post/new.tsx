@@ -41,8 +41,12 @@ export default function NewPostScreen() {
   const [videoThumbnailUrl, setVideoThumbnailUrl] = useState('')
   const [quotedPostId, setQuotedPostId] = useState('')
 
-  const { pickAndUpload, uploading, error: imageError, clearError: clearImageError } =
-    useImageUpload({ bucket: 'post-images' })
+  const {
+    pickAndUploadMultiple,
+    uploading,
+    error: imageError,
+    clearError: clearImageError,
+  } = useImageUpload({ bucket: 'post-images' })
   const { submit, submitting, error, clearError } = usePostSubmit({
     onSuccess: (post) => {
       setTitle('')
@@ -62,13 +66,17 @@ export default function NewPostScreen() {
     !submitting &&
     !uploading
 
+  // 한글 주석: 다중 선택 - 남은 슬롯만큼만 picker selectionLimit 줘서
+  //   PHPicker 우상단 "추가 (n)"으로 확정. 시뮬레이터 PHPicker 글리치 회피
+  //   (single mode는 X 안 눌리는 버그 자주 발생)
   const addImage = async () => {
-    if (imageUrls.length >= 4) {
+    const remaining = 4 - imageUrls.length
+    if (remaining <= 0) {
       Alert.alert('사진은 최대 4장까지', '피드에서 한눈에 보기 좋게 4장까지만 붙일 수 있어.')
       return
     }
-    const url = await pickAndUpload()
-    if (url) setImageUrls((prev) => [...prev, url])
+    const urls = await pickAndUploadMultiple(remaining)
+    if (urls.length > 0) setImageUrls((prev) => [...prev, ...urls])
   }
 
   const handleSubmit = async () => {

@@ -107,7 +107,9 @@ export function usePostSubmit({
             quoted_post_id: input.quotedPostId ?? null,
             is_quote: Boolean(input.quotedPostId),
           })
-          .select('*, author:profiles!author_id(*), quoted:posts!posts_quoted_post_id_fkey(*, author:profiles!author_id(*))')
+          // 한글 주석: PostgREST self-relation cache 회피 (useFeed/usePost와 동일)
+          //   인용글 본문은 별도 fetch로 분리 (Phase 6)
+          .select('*, author:profiles!author_id(*)')
           .single()
 
         if (insErr) throw new Error(insErr.message)

@@ -42,14 +42,17 @@ export function useEmailAuth(): UseEmailAuthReturn {
       setError(null)
 
       // ─────────────────────────────────────────────
-      // 1) 입력 검증
+      // 1) 입력 검증 + 정규화
+      //   - 비번 trim → iOS 자동완성에서 들어오는 보이지 않는 공백 제거
+      //     (가입 시와 로그인 시 동일 처리해야 매칭됨)
       // ─────────────────────────────────────────────
       const trimmedEmail = email.trim().toLowerCase()
+      const trimmedPassword = password.trim()
       if (!EMAIL_REGEX.test(trimmedEmail)) {
         setError('이메일 형식이 잘못됐어. 다시 확인해줘')
         return false
       }
-      if (password.length < PASSWORD_MIN) {
+      if (trimmedPassword.length < PASSWORD_MIN) {
         setError(`비밀번호는 최소 ${PASSWORD_MIN}자 이상이어야 해`)
         return false
       }
@@ -63,7 +66,7 @@ export function useEmailAuth(): UseEmailAuthReturn {
         // ─────────────────────────────────────────────
         const { data, error: signUpErr } = await supabase.auth.signUp({
           email: trimmedEmail,
-          password,
+          password: trimmedPassword,
         })
 
         if (signUpErr) {
@@ -77,11 +80,23 @@ export function useEmailAuth(): UseEmailAuthReturn {
           throw new Error(signUpErr.message)
         }
 
-        // 한글 주석: confirmation OFF 가정 → session 즉시 생성됨
-        //   ON이면 session=null이고 사용자에게 메일 확인 안내 필요
+        // 한글 주석: confirmation OFF면 session 즉시 생성됨
+        //   ON이면 session=null → 즉시 signIn 시도 (Supabase가 가끔 ON인데도 로그인 허용)
         if (!data.session) {
-          setError('가입 메일을 보냈어. 메일에서 인증 링크 클릭 후 로그인해줘')
-          return false
+          console.warn('[useEmailAuth.signUp] session=null → 자동 로그인 시도')
+          const { error: autoSignInErr } = await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password: trimmedPassword,
+          })
+          if (autoSignInErr) {
+            // 한글 주석: 자동 로그인도 실패 → confirmation 메일 모드 확정
+            //   사용자에게 메일 확인 안내 (Dashboard에서 Confirm email OFF 권장)
+            setError(
+              '가입은 됐는데 자동 로그인이 막혔어. Supabase Dashboard에서 ' +
+              'Confirm email을 끄거나, 어드민이 사용자를 수동 confirm 해야 해',
+            )
+            return false
+          }
         }
 
         // 한글 주석: 프로필 새로고침 → AuthGate가 onboarding으로 자동 이동
@@ -104,11 +119,12 @@ export function useEmailAuth(): UseEmailAuthReturn {
       setError(null)
 
       const trimmedEmail = email.trim().toLowerCase()
+      const trimmedPassword = password.trim()
       if (!EMAIL_REGEX.test(trimmedEmail)) {
         setError('이메일 형식이 잘못됐어. 다시 확인해줘')
         return false
       }
-      if (password.length < PASSWORD_MIN) {
+      if (trimmedPassword.length < PASSWORD_MIN) {
         setError(`비밀번호는 최소 ${PASSWORD_MIN}자 이상이어야 해`)
         return false
       }
@@ -117,7 +133,7 @@ export function useEmailAuth(): UseEmailAuthReturn {
       try {
         const { error: signInErr } = await supabase.auth.signInWithPassword({
           email: trimmedEmail,
-          password,
+          password: trimmedPassword,
         })
 
         if (signInErr) {
