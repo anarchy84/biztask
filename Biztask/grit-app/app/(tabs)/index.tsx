@@ -14,6 +14,7 @@ import { FEED_FILTER_LABELS, type FeedFilter, type Post } from '@/lib/types'
 import { useFeed } from '@/lib/hooks/useFeed'
 import { useTier } from '@/lib/hooks/useTier'
 import PostCard from '@/components/feed/PostCard'
+import SecretLoungeBanner from '@/components/feed/SecretLoungeBanner'
 
 const FILTERS: FeedFilter[] = ['all', 'following', 'industry', 'nearby', 'hot']
 
@@ -38,20 +39,11 @@ export default function HomeFeedScreen() {
           <Text style={styles.logoGlyph}>그</Text>
         </View>
         <Text style={styles.logoText}>그릿</Text>
+        {/* 한글 주석: 글쓰기 + 버튼은 가운데 탭으로 통합됨 (중복 제거) */}
         <View style={styles.headerActions}>
           <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel="검색">
             <Text style={styles.iconText}>⌕</Text>
           </Pressable>
-          {canWritePost ? (
-            <Pressable
-              style={styles.writeButton}
-              onPress={() => router.push('/post/new' as any)}
-              accessibilityRole="button"
-              accessibilityLabel="글쓰기"
-            >
-              <Text style={styles.writeButtonText}>＋</Text>
-            </Pressable>
-          ) : null}
         </View>
       </View>
 
@@ -99,6 +91,7 @@ export default function HomeFeedScreen() {
           }
           onEndReached={loadMore}
           onEndReachedThreshold={0.35}
+          ListHeaderComponent={<SecretLoungeBanner />}
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.footerLoader}>
