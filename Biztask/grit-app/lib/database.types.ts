@@ -4,10 +4,12 @@
 //   - Cowork에서: mcp__supabase__generate_typescript_types 호출
 //   - 로컬 CLI: npx supabase gen types typescript --project-id lqotquxmmrshikevqnsg > lib/database.types.ts
 //
-// ▣ 언제 재생성?
-//   - 테이블 추가/변경 (마이그레이션 apply 후)
-//   - enum 값 추가
-//   - 함수·뷰 추가
+// ▣ V2 마이그레이션 (2026-04-28):
+//   - profiles: tier/business_number/verified_at/subscription_until/region/years_in_business
+//               /cover_url/grit_score/grit_score_updated_at/follower_count/following_count
+//   - posts: quoted_post_id/is_quote/video_url/video_thumbnail_url/bookmark_count/quote_count/image_urls
+//   - follows: 신규 테이블 (M009)
+//   - user_tier enum: guest/general/verified/blue
 
 export type Json =
   | string
@@ -18,8 +20,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -86,48 +86,102 @@ export type Database = {
           },
         ]
       }
+      follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follows_follower_id_fkey"
+            columns: ["follower_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follows_following_id_fkey"
+            columns: ["following_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           author_id: string
           body: string
+          bookmark_count: number
           category: Database["public"]["Enums"]["post_category"]
           comment_count: number
           created_at: string
           dislike_count: number
           id: string
           image_url: string | null
+          image_urls: string[]
           is_deleted: boolean
+          is_quote: boolean
           like_count: number
+          quote_count: number
+          quoted_post_id: string | null
           title: string
           updated_at: string
+          video_thumbnail_url: string | null
+          video_url: string | null
         }
         Insert: {
           author_id: string
           body: string
+          bookmark_count?: number
           category?: Database["public"]["Enums"]["post_category"]
           comment_count?: number
           created_at?: string
           dislike_count?: number
           id?: string
           image_url?: string | null
+          image_urls?: string[]
           is_deleted?: boolean
+          is_quote?: boolean
           like_count?: number
+          quote_count?: number
+          quoted_post_id?: string | null
           title: string
           updated_at?: string
+          video_thumbnail_url?: string | null
+          video_url?: string | null
         }
         Update: {
           author_id?: string
           body?: string
+          bookmark_count?: number
           category?: Database["public"]["Enums"]["post_category"]
           comment_count?: number
           created_at?: string
           dislike_count?: number
           id?: string
           image_url?: string | null
+          image_urls?: string[]
           is_deleted?: boolean
+          is_quote?: boolean
           like_count?: number
+          quote_count?: number
+          quoted_post_id?: string | null
           title?: string
           updated_at?: string
+          video_thumbnail_url?: string | null
+          video_url?: string | null
         }
         Relationships: [
           {
@@ -137,41 +191,81 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "posts_quoted_post_id_fkey"
+            columns: ["quoted_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
         Row: {
           avatar_url: string | null
           bio: string | null
+          business_number: string | null
+          cover_url: string | null
           created_at: string
+          follower_count: number
+          following_count: number
+          grit_score: number
+          grit_score_updated_at: string | null
           id: string
           industry: Database["public"]["Enums"]["industry"]
           is_npc: boolean
           nickname: string
           onboarded: boolean
+          region: string | null
+          subscription_until: string | null
+          tier: Database["public"]["Enums"]["user_tier"]
           updated_at: string
+          verified_at: string | null
+          years_in_business: number | null
         }
         Insert: {
           avatar_url?: string | null
           bio?: string | null
+          business_number?: string | null
+          cover_url?: string | null
           created_at?: string
+          follower_count?: number
+          following_count?: number
+          grit_score?: number
+          grit_score_updated_at?: string | null
           id: string
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname: string
           onboarded?: boolean
+          region?: string | null
+          subscription_until?: string | null
+          tier?: Database["public"]["Enums"]["user_tier"]
           updated_at?: string
+          verified_at?: string | null
+          years_in_business?: number | null
         }
         Update: {
           avatar_url?: string | null
           bio?: string | null
+          business_number?: string | null
+          cover_url?: string | null
           created_at?: string
+          follower_count?: number
+          following_count?: number
+          grit_score?: number
+          grit_score_updated_at?: string | null
           id?: string
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname?: string
           onboarded?: boolean
+          region?: string | null
+          subscription_until?: string | null
+          tier?: Database["public"]["Enums"]["user_tier"]
           updated_at?: string
+          verified_at?: string | null
+          years_in_business?: number | null
         }
         Relationships: []
       }
@@ -232,6 +326,7 @@ export type Database = {
       post_category: "humor" | "worry" | "question" | "tip"
       reaction_target: "post" | "comment"
       reaction_type: "like" | "dislike"
+      user_tier: "guest" | "general" | "verified" | "blue"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -374,6 +469,7 @@ export const Constants = {
       post_category: ["humor", "worry", "question", "tip"],
       reaction_target: ["post", "comment"],
       reaction_type: ["like", "dislike"],
+      user_tier: ["guest", "general", "verified", "blue"],
     },
   },
 } as const

@@ -1,15 +1,19 @@
-// 한글 주석: 앱 루트 레이아웃
+// 한글 주석: GRIT V2 앱 루트 레이아웃 (2026-04-28 갈아엎음)
 //
 // ▣ 이 파일의 역할:
 //   - 모든 화면의 최상위 래퍼 (Expo Router v4의 Root Layout)
-//   - Pretendard 폰트 로딩 + 스플래시 화면 제어
-//   - AuthProvider로 앱 전역 익명 로그인·프로필 주입
+//   - Pretendard + Inter 폰트 로딩 + 스플래시 화면 제어
+//   - AuthProvider + ThemeProvider로 앱 전역 컨텍스트 주입
 //   - Stack Navigator로 탭 화면 + 상세·로그인·온보딩 화면 연결
 //   - AuthGate가 온보딩 여부에 따라 자동 분기
 //
-// ▣ 폰트 로딩 전략:
-//   - Pretendard 폰트 파일이 assets/fonts/에 있으면 로드
-//   - 없으면 useFonts가 에러 반환하고 시스템 폰트로 fallback (크래시 안 남)
+// ▣ V2 변경:
+//   - V1 colors 토큰 → V2 토큰 (colors.bg.base, colors.text.primary 등)
+//   - 폰트: @expo-google-fonts/pretendard + inter 패키지 사용
+//   - ThemeProvider 추가 (다크모드 우선)
+//
+// ▣ 폰트 패키지 설치 필요 (대웅이 한 번만):
+//   npx expo install @expo-google-fonts/pretendard @expo-google-fonts/inter
 
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { useFonts } from 'expo-font'
@@ -17,8 +21,20 @@ import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native'
+
+// 한글 주석: 폰트 로드
+//   - Pretendard: assets/fonts/에 직접 다운로드한 otf 파일 (Google Fonts 없음)
+//   - Inter: @expo-google-fonts/inter 패키지에서 받아옴
+import {
+  Inter_400Regular,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter'
+
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { ThemeProvider } from '@/contexts/ThemeContext'
 import { colors } from '@/constants/colors'
+import { typography } from '@/constants/typography'
 
 // 한글 주석: 앱 시작 시 스플래시 유지 → 폰트 로딩 끝난 뒤 숨김
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -26,11 +42,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 })
 
 export default function RootLayout() {
+  // 한글 주석: 폰트 로드
+  //   - Pretendard: 로컬 otf 파일 require (assets/fonts/)
+  //   - Inter: @expo-google-fonts/inter 패키지
   const [fontsLoaded, fontError] = useFonts({
-    // 'Pretendard-Regular':  require('../assets/fonts/Pretendard-Regular.otf'),
-    // 'Pretendard-Medium':   require('../assets/fonts/Pretendard-Medium.otf'),
-    // 'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
-    // 'Pretendard-Bold':     require('../assets/fonts/Pretendard-Bold.otf'),
+    'Pretendard-Regular':   require('../assets/fonts/Pretendard-Regular.otf'),
+    'Pretendard-Medium':    require('../assets/fonts/Pretendard-Medium.otf'),
+    'Pretendard-SemiBold':  require('../assets/fonts/Pretendard-SemiBold.otf'),
+    'Pretendard-Bold':      require('../assets/fonts/Pretendard-Bold.otf'),
+    'Pretendard-ExtraBold': require('../assets/fonts/Pretendard-ExtraBold.otf'),
+    'Inter-Regular':        Inter_400Regular,
+    'Inter-SemiBold':        Inter_600SemiBold,
+    'Inter-Bold':            Inter_700Bold,
   })
 
   useEffect(() => {
@@ -44,66 +67,56 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <StatusBar style="dark" />
-      <AuthGate>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="post/[id]"
-            options={{
-              // 한글 주석: 글 상세는 push 스택 (뒤로가기 버튼 자연스러움)
-              presentation: 'card',
-              animation: 'slide_from_right',
-            }}
-          />
-          <Stack.Screen
-            name="login"
-            options={{
-              // 한글 주석: 로그인은 모달 (시트 느낌으로 올라옴)
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="auth/callback"
-            options={{
-              // 한글 주석: OAuth 딥링크 fallback 처리 화면
-              animation: 'fade',
-            }}
-          />
-          <Stack.Screen
-            name="onboarding/nickname"
-            options={{
-              // 한글 주석: 온보딩은 가로 슬라이드 + 뒤로가기 제스처 비활성화
-              //   (온보딩 스킵 불가 - AuthGate가 강제 렌더)
-              gestureEnabled: false,
-              animation: 'fade',
-            }}
-          />
-          <Stack.Screen
-            name="profile/edit"
-            options={{
-              // 한글 주석: 프로필 편집은 모달 시트 느낌
-              presentation: 'modal',
-              animation: 'slide_from_bottom',
-            }}
-          />
-        </Stack>
-      </AuthGate>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        {/* 한글 주석: V2는 다크모드 우선 → StatusBar light */}
+        <StatusBar style="light" />
+        <AuthGate>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg.base } }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="post/[id]"
+              options={{
+                presentation: 'card',
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="login"
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="auth/callback"
+              options={{
+                animation: 'fade',
+              }}
+            />
+            <Stack.Screen
+              name="onboarding/nickname"
+              options={{
+                gestureEnabled: false,
+                animation: 'fade',
+              }}
+            />
+            <Stack.Screen
+              name="profile/edit"
+              options={{
+                presentation: 'modal',
+                animation: 'slide_from_bottom',
+              }}
+            />
+          </Stack>
+        </AuthGate>
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 
 // ─────────────────────────────────────────────
 // 한글 주석: AuthGate - 인증 상태에 따른 라우팅 분기
-//
-// 상태별 동작:
-//   1) loading         → 로딩 스피너 (세션 + 프로필 fetch 중)
-//   2) profile 없음    → 에러 화면 (트리거 실패 등 극히 드문 케이스)
-//   3) 온보딩 필요     → /onboarding/nickname 강제 리다이렉트
-//      (소셜 로그인 + onboarded=false)
-//   4) 정상            → 현재 라우트 그대로 렌더
 // ─────────────────────────────────────────────
 
 function AuthGate({ children }: { children: React.ReactNode }) {
@@ -111,27 +124,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const segments = useSegments()
 
-  // 한글 주석: 온보딩 필요 시 강제 리다이렉트
-  //   - useSegments로 현재 라우트 확인해서 이미 온보딩 중이면 push 반복 방지
   useEffect(() => {
     if (loading || !profile) return
 
-    // 한글 주석: typedRoutes가 segments를 탭 라우트로만 좁혀놔서 string 캐스팅 필요
     const firstSegment = segments[0] as string | undefined
     const onOnboarding = firstSegment === 'onboarding'
     const onLogin = firstSegment === 'login'
     const onAuthCallback = firstSegment === 'auth'
 
-    // 한글 주석: 소셜 로그인했는데 닉네임 미설정 → 온보딩으로
-    //   - 로그인 화면은 패스 (소셜 버튼 눌러야 여기까지 옴)
-    //   - OAuth 콜백 화면은 토큰 처리 후 직접 이동해야 하므로 패스
-    //   - 익명은 isOnboarded=true 취급이라 여기 안 걸림
     if (!isOnboarded && !onOnboarding && !onLogin && !onAuthCallback) {
       router.replace('/onboarding/nickname' as any)
       return
     }
 
-    // 한글 주석: 이미 온보딩 끝났는데 온보딩 화면에 있으면 홈으로
     if (isOnboarded && onOnboarding) {
       router.replace('/(tabs)' as any)
     }
@@ -140,13 +145,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (loading) {
     return (
       <View style={gateStyles.container}>
-        <ActivityIndicator size="large" color={colors.brand} />
-        <Text style={gateStyles.text}>사장님 쉼터 준비 중…</Text>
+        <ActivityIndicator size="large" color={colors.brand[500]} />
+        <Text style={gateStyles.text}>그릿 라운지 준비 중…</Text>
       </View>
     )
   }
 
-  // 한글 주석: 프로필 생성 실패 (극히 드문 트리거 실패 케이스)
   if (!profile) {
     return (
       <View style={gateStyles.container}>
@@ -164,17 +168,15 @@ const gateStyles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bg.base,
     gap: 16,
   },
   text: {
-    fontSize: 13,
-    color: colors.textMuted,
-    fontFamily: 'Pretendard-Regular',
+    ...typography.meta,
+    color: colors.text.tertiary,
   },
   errorTitle: {
-    fontSize: 16,
-    color: colors.textStrong,
-    fontFamily: 'Pretendard-SemiBold',
+    ...typography.heading3,
+    color: colors.text.primary,
   },
 })

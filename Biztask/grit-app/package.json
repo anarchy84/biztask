@@ -12,6 +12,7 @@
     "reset": "rm -rf node_modules && npm install"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@supabase/supabase-js": "^2.45.0",
     "date-fns": "^4.1.0",
