@@ -582,6 +582,15 @@ async function generateCommentDraft(
 }
 
 async function generateText(system: string, user: string): Promise<string | null> {
+  // 한글 주석: V1 패턴 복원 - Gemini 우선 → Anthropic → OpenAI 순으로 fallback
+  //   Gemini 무료 한도 안에서는 0원, 초과 시 Anthropic으로 자동 전환
+  //   GEMINI_API_KEY 없으면 Anthropic부터 시작
+  const geminiKey = Deno.env.get('GEMINI_API_KEY') ?? ''
+  if (geminiKey) {
+    const result = await callGemini(geminiKey, system, user)
+    if (result) return result
+  }
+
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY') ?? ''
   if (anthropicKey) {
     const result = await callAnthropic(anthropicKey, system, user)
@@ -595,6 +604,42 @@ async function generateText(system: string, user: string): Promise<string | null
   }
 
   return null
+}
+
+// 한글 주석: Gemini API 호출 (V1과 동일 패턴, REST 직접)
+//   - 모델: gemini-2.0-flash (gemini-2.5-flash보다 무료 한도 더 큼)
+//     - 무료 한도: 15 RPM, 1500 RPD, 1M TPM
+//     - 우리 사용량 552/일 → 한도의 36%
+//   - 초과 시 자동 결제 위험 → Google Cloud billing은 OFF 권장
+//   - 한도 초과 시 res.ok=false → 자동으로 Anthropic으로 fallback
+async function callGemini(apiKey: string, system: string, user: string): Promise<string | null> {
+  try {
+    const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.0-flash'
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: user }] }],
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 700,
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        ],
+      }),
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    return json.candidates?.[0]?.content?.parts?.[0]?.text ?? null
+  } catch {
+    return null
+  }
 }
 
 async function callAnthropic(apiKey: string, system: string, user: string): Promise<string | null> {
