@@ -4,12 +4,10 @@
 //   - Cowork에서: mcp__supabase__generate_typescript_types 호출
 //   - 로컬 CLI: npx supabase gen types typescript --project-id lqotquxmmrshikevqnsg > lib/database.types.ts
 //
-// ▣ V2 마이그레이션 (2026-04-28):
-//   - profiles: tier/business_number/verified_at/subscription_until/region/years_in_business
-//               /cover_url/grit_score/grit_score_updated_at/follower_count/following_count
-//   - posts: quoted_post_id/is_quote/video_url/video_thumbnail_url/bookmark_count/quote_count/image_urls
-//   - follows: 신규 테이블 (M009)
-//   - user_tier enum: guest/general/verified/blue
+// ▣ 마이그레이션 적용 (2026-04-29):
+//   - M011: RLS + 카운터 트리거 보강 (current_user_tier_rank 등)
+//   - M012: 활어 엔진 V2 - npc_personas/content_backlog/npc_activity_log + secret_* category
+//   - M013: pg_cron 4종 (post-publisher/comment-bot/vote-bot/secret-lounge-bot)
 
 export type Json =
   | string
@@ -86,6 +84,75 @@ export type Database = {
           },
         ]
       }
+      content_backlog: {
+        Row: {
+          assigned_persona_id: string | null
+          category: Database["public"]["Enums"]["post_category"]
+          created_at: string
+          id: string
+          published_at: string | null
+          published_post_id: string | null
+          redaction_notes: string | null
+          risk_level: Database["public"]["Enums"]["risk_level"]
+          scheduled_for: string | null
+          source_body: string | null
+          source_comments: Json | null
+          source_title: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["backlog_status"]
+          target_surface: Database["public"]["Enums"]["content_surface"]
+        }
+        Insert: {
+          assigned_persona_id?: string | null
+          category?: Database["public"]["Enums"]["post_category"]
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          published_post_id?: string | null
+          redaction_notes?: string | null
+          risk_level?: Database["public"]["Enums"]["risk_level"]
+          scheduled_for?: string | null
+          source_body?: string | null
+          source_comments?: Json | null
+          source_title?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["backlog_status"]
+          target_surface?: Database["public"]["Enums"]["content_surface"]
+        }
+        Update: {
+          assigned_persona_id?: string | null
+          category?: Database["public"]["Enums"]["post_category"]
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          published_post_id?: string | null
+          redaction_notes?: string | null
+          risk_level?: Database["public"]["Enums"]["risk_level"]
+          scheduled_for?: string | null
+          source_body?: string | null
+          source_comments?: Json | null
+          source_title?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["backlog_status"]
+          target_surface?: Database["public"]["Enums"]["content_surface"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_backlog_assigned_persona_id_fkey"
+            columns: ["assigned_persona_id"]
+            isOneToOne: false
+            referencedRelation: "npc_personas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_backlog_published_post_id_fkey"
+            columns: ["published_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follows: {
         Row: {
           created_at: string
@@ -113,6 +180,118 @@ export type Database = {
           {
             foreignKeyName: "follows_following_id_fkey"
             columns: ["following_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      npc_activity_log: {
+        Row: {
+          action_type: Database["public"]["Enums"]["npc_action_type"]
+          created_at: string
+          engine_version: string
+          id: string
+          persona_id: string
+          surface: Database["public"]["Enums"]["content_surface"]
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action_type: Database["public"]["Enums"]["npc_action_type"]
+          created_at?: string
+          engine_version?: string
+          id?: string
+          persona_id: string
+          surface?: Database["public"]["Enums"]["content_surface"]
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action_type?: Database["public"]["Enums"]["npc_action_type"]
+          created_at?: string
+          engine_version?: string
+          id?: string
+          persona_id?: string
+          surface?: Database["public"]["Enums"]["content_surface"]
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_activity_log_persona_id_fkey"
+            columns: ["persona_id"]
+            isOneToOne: false
+            referencedRelation: "npc_personas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      npc_personas: {
+        Row: {
+          active_hours: number[]
+          category_weights: Json
+          comment_freq_per_day: number
+          created_at: string
+          display_name: string
+          id: string
+          industry: Database["public"]["Enums"]["industry"]
+          is_active: boolean
+          notes: string | null
+          post_freq_per_day: number
+          primary_categories: Database["public"]["Enums"]["post_category"][]
+          profile_id: string | null
+          region: string | null
+          tier: Database["public"]["Enums"]["user_tier"]
+          tone: string
+          updated_at: string
+          vote_freq_per_day: number
+          years_in_business: number | null
+        }
+        Insert: {
+          active_hours?: number[]
+          category_weights?: Json
+          comment_freq_per_day?: number
+          created_at?: string
+          display_name: string
+          id?: string
+          industry: Database["public"]["Enums"]["industry"]
+          is_active?: boolean
+          notes?: string | null
+          post_freq_per_day?: number
+          primary_categories?: Database["public"]["Enums"]["post_category"][]
+          profile_id?: string | null
+          region?: string | null
+          tier?: Database["public"]["Enums"]["user_tier"]
+          tone: string
+          updated_at?: string
+          vote_freq_per_day?: number
+          years_in_business?: number | null
+        }
+        Update: {
+          active_hours?: number[]
+          category_weights?: Json
+          comment_freq_per_day?: number
+          created_at?: string
+          display_name?: string
+          id?: string
+          industry?: Database["public"]["Enums"]["industry"]
+          is_active?: boolean
+          notes?: string | null
+          post_freq_per_day?: number
+          primary_categories?: Database["public"]["Enums"]["post_category"][]
+          profile_id?: string | null
+          region?: string | null
+          tier?: Database["public"]["Enums"]["user_tier"]
+          tone?: string
+          updated_at?: string
+          vote_freq_per_day?: number
+          years_in_business?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_personas_profile_id_fkey"
+            columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -215,6 +394,7 @@ export type Database = {
           industry: Database["public"]["Enums"]["industry"]
           is_npc: boolean
           nickname: string
+          npc_persona_id: string | null
           onboarded: boolean
           region: string | null
           subscription_until: string | null
@@ -237,6 +417,7 @@ export type Database = {
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname: string
+          npc_persona_id?: string | null
           onboarded?: boolean
           region?: string | null
           subscription_until?: string | null
@@ -259,6 +440,7 @@ export type Database = {
           industry?: Database["public"]["Enums"]["industry"]
           is_npc?: boolean
           nickname?: string
+          npc_persona_id?: string | null
           onboarded?: boolean
           region?: string | null
           subscription_until?: string | null
@@ -267,7 +449,15 @@ export type Database = {
           verified_at?: string | null
           years_in_business?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_npc_persona_id_fkey"
+            columns: ["npc_persona_id"]
+            isOneToOne: false
+            referencedRelation: "npc_personas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reactions: {
         Row: {
@@ -309,9 +499,44 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      current_user_tier_rank: { Args: never; Returns: number }
+      get_feed_ranked: {
+        Args: { p_limit?: number; p_offset?: number; p_viewer_id: string }
+        Returns: {
+          author_id: string
+          body: string
+          bookmark_count: number
+          category: Database["public"]["Enums"]["post_category"]
+          comment_count: number
+          created_at: string
+          dislike_count: number
+          id: string
+          image_urls: string[]
+          is_quote: boolean
+          like_count: number
+          quote_count: number
+          quoted_post_id: string
+          rank_score: number
+          title: string
+          video_thumbnail_url: string
+          video_url: string
+        }[]
+      }
+      get_npc_load_balance: {
+        Args: {
+          p_action_type?: Database["public"]["Enums"]["npc_action_type"]
+          p_surface?: Database["public"]["Enums"]["content_surface"]
+        }
+        Returns: {
+          load_score: number
+          persona_id: string
+          recent_count: number
+        }[]
+      }
     }
     Enums: {
+      backlog_status: "queued" | "published" | "discarded"
+      content_surface: "feed" | "secret_lounge"
       industry:
         | "cafe"
         | "food"
@@ -323,9 +548,25 @@ export type Database = {
         | "health"
         | "creative"
         | "etc"
-      post_category: "humor" | "worry" | "question" | "tip"
+      npc_action_type:
+        | "post"
+        | "comment"
+        | "reply"
+        | "reaction_like"
+        | "reaction_dislike"
+        | "follow"
+      post_category:
+        | "humor"
+        | "worry"
+        | "question"
+        | "tip"
+        | "secret_staffing"
+        | "secret_cost"
+        | "secret_property"
+        | "secret_trouble"
       reaction_target: "post" | "comment"
       reaction_type: "like" | "dislike"
+      risk_level: "low" | "medium" | "high"
       user_tier: "guest" | "general" | "verified" | "blue"
     }
     CompositeTypes: {
@@ -454,6 +695,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      backlog_status: ["queued", "published", "discarded"],
+      content_surface: ["feed", "secret_lounge"],
       industry: [
         "cafe",
         "food",
@@ -466,9 +709,27 @@ export const Constants = {
         "creative",
         "etc",
       ],
-      post_category: ["humor", "worry", "question", "tip"],
+      npc_action_type: [
+        "post",
+        "comment",
+        "reply",
+        "reaction_like",
+        "reaction_dislike",
+        "follow",
+      ],
+      post_category: [
+        "humor",
+        "worry",
+        "question",
+        "tip",
+        "secret_staffing",
+        "secret_cost",
+        "secret_property",
+        "secret_trouble",
+      ],
       reaction_target: ["post", "comment"],
       reaction_type: ["like", "dislike"],
+      risk_level: ["low", "medium", "high"],
       user_tier: ["guest", "general", "verified", "blue"],
     },
   },

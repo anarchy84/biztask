@@ -1,0 +1,13 @@
+project_id = "lqotquxmmrshikevqnsg"
+
+[functions.post-publisher]
+verify_jwt = false
+
+[functions.comment-bot]
+verify_jwt = false
+
+[functions.vote-bot]
+verify_jwt = false
+
+[functions.secret-lounge-bot]
+verify_jwt = false
