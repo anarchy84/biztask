@@ -2,27 +2,45 @@
 //
 // ▣ 커버 + 아바타 + 통계 + Mutual + 그릿 게이지 + 프로필 탭 구조.
 
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { Avatar } from '@/components/common/Avatar'
 import { IndustryBadge, ProBlueBadge, VerifiedBadge, YearsBadge } from '@/components/common/Badge'
 import { Button } from '@/components/common/Button'
 import { GritGauge } from '@/components/common/GritGauge'
+import PostCard from '@/components/feed/PostCard'
 import { colors } from '@/constants/colors'
 import { radius, spacing } from '@/constants/spacing'
 import { typography } from '@/constants/typography'
-import { INDUSTRY_META } from '@/lib/types'
+import { INDUSTRY_META, type Post } from '@/lib/types'
 import { useAuth } from '@/contexts/AuthContext'
+import { useMyPosts } from '@/lib/hooks/useMyPosts'
 import { useMyStats } from '@/lib/hooks/useMyStats'
+import { useReaction } from '@/lib/hooks/useReaction'
 
 const TABS = ['내 게시물', '답글', '비즈니스 제안', '저장']
 
 export default function ProfileScreen() {
   const { profile, isAnonymous } = useAuth()
-  const { stats, loading } = useMyStats()
+  const { stats, loading, refresh: refreshStats } = useMyStats()
+  const {
+    posts: myPosts,
+    loading: postsLoading,
+    error: postsError,
+    refresh: refreshMyPosts,
+    applyPostReaction,
+  } = useMyPosts()
+  const { toggle } = useReaction()
   const [activeTab, setActiveTab] = useState(0)
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshStats()
+      void refreshMyPosts()
+    }, [refreshMyPosts, refreshStats]),
+  )
 
   if (!profile) {
     return (
@@ -36,6 +54,18 @@ export default function ProfileScreen() {
 
   const industryLabel = INDUSTRY_META[profile.industry]?.label ?? '기타'
   const verified = profile.tier === 'verified' || profile.tier === 'blue' || Boolean(profile.verified_at)
+
+  const handlePostLike = (post: Post) => {
+    void toggle({
+      target: 'post',
+      targetId: post.id,
+      current: post.myReaction ?? null,
+      next: 'like',
+      onOptimistic: (nextMyReaction, likeDelta, dislikeDelta) => {
+        applyPostReaction(post.id, nextMyReaction, likeDelta, dislikeDelta)
+      },
+    })
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -129,10 +159,41 @@ export default function ProfileScreen() {
           ))}
         </View>
 
-        <View style={styles.emptyPanel}>
-          <Text style={styles.emptyTitle}>{TABS[activeTab]}</Text>
-          <Text style={styles.emptyText}>V2 피드 연결 후 이 영역에 활동이 표시돼.</Text>
-        </View>
+        {activeTab === 0 ? (
+          <View style={styles.postPanel}>
+            {postsLoading ? (
+              <View style={styles.emptyPanel}>
+                <ActivityIndicator color={colors.brand[500]} />
+                <Text style={styles.emptyText}>내 게시물 불러오는 중...</Text>
+              </View>
+            ) : postsError ? (
+              <Pressable style={styles.emptyPanel} onPress={refreshMyPosts} accessibilityRole="button">
+                <Text style={styles.emptyTitle}>내 게시물을 불러올 수 없어</Text>
+                <Text style={styles.emptyText}>{postsError} · 다시 시도</Text>
+              </Pressable>
+            ) : myPosts.length === 0 ? (
+              <View style={styles.emptyPanel}>
+                <Text style={styles.emptyTitle}>아직 작성한 게시물이 없어</Text>
+                <Text style={styles.emptyText}>첫 운영 이야기를 남기면 여기에 쌓여.</Text>
+              </View>
+            ) : (
+              myPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  compact
+                  onPress={() => router.push(`/post/${post.id}` as any)}
+                  onLikePress={handlePostLike}
+                />
+              ))
+            )}
+          </View>
+        ) : (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.emptyTitle}>{TABS[activeTab]}</Text>
+            <Text style={styles.emptyText}>V2 피드 연결 후 이 영역에 활동이 표시돼.</Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   )
@@ -338,6 +399,10 @@ const styles = StyleSheet.create({
     padding: spacing[6],
     alignItems: 'center',
     gap: spacing[2],
+  },
+  postPanel: {
+    padding: spacing[4],
+    gap: spacing[3],
   },
   emptyTitle: {
     ...typography.bodyEmphasis,
