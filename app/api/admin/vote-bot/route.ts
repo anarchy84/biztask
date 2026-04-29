@@ -78,28 +78,18 @@ function pickRandom<T>(arr: T[]): T {
 }
 
 // ────────────────────────────────────────────────────────────
-// 업/다운 선택 — 8:2 비율 (유머 글은 9:1로 긍정 강화)
-// ────────────────────────────────────────────────────────────
-function pickVoteType(category?: string): "upvote" | "downvote" {
-  const upvoteRatio = category === "유머" ? 0.90 : 0.80;
-  return Math.random() < upvoteRatio ? "upvote" : "downvote";
-}
-
-// ────────────────────────────────────────────────────────────
 // 글 1개에 보팅 1개 찍기
+// biztask의 post_likes는 "좋아요"만 지원 (다운보팅 없음)
 // ────────────────────────────────────────────────────────────
 async function voteOnPost(
   supabase: SupabaseClient,
   persona: Persona,
   postId: string,
-  currentUpvotes: number,
-  category?: string
+  currentUpvotes: number
 ): Promise<{ success: boolean; duplicate?: boolean; error?: string }> {
-  const voteType = pickVoteType(category);
-
   // 중복 체크 (UNIQUE 제약이 있어도 에러 전에 체크)
   const { data: existing } = await supabase
-    .from("post_votes")
+    .from("post_likes")
     .select("id")
     .eq("post_id", postId)
     .eq("user_id", persona.user_id)
@@ -108,8 +98,8 @@ async function voteOnPost(
   if (existing) return { success: false, duplicate: true };
 
   const { error: insertErr } = await supabase
-    .from("post_votes")
-    .insert({ post_id: postId, user_id: persona.user_id, vote_type: voteType });
+    .from("post_likes")
+    .insert({ post_id: postId, user_id: persona.user_id });
 
   if (insertErr) {
     // UNIQUE 위반은 duplicate로 취급
@@ -117,12 +107,14 @@ async function voteOnPost(
     return { success: false, error: insertErr.message };
   }
 
-  // posts.upvotes 증가/감소
-  const delta = voteType === "upvote" ? 1 : -1;
-  await supabase
-    .from("posts")
-    .update({ upvotes: Math.max(0, currentUpvotes + delta) })
-    .eq("id", postId);
+  // posts.upvotes +1 (RPC 우선, 실패 시 직접 UPDATE)
+  const { error: rpcErr } = await supabase.rpc("increment_upvotes", { row_id: postId });
+  if (rpcErr) {
+    await supabase
+      .from("posts")
+      .update({ upvotes: currentUpvotes + 1 })
+      .eq("id", postId);
+  }
 
   // 페르소나 카운터
   await supabase
@@ -139,13 +131,15 @@ async function voteOnPost(
 
 // ────────────────────────────────────────────────────────────
 // 댓글에 보팅 찍기
+// comment_votes: vote_type(up/down) 지원 — 업 90%, 다운 10%
 // ────────────────────────────────────────────────────────────
 async function voteOnComment(
   supabase: SupabaseClient,
   persona: Persona,
   commentId: string
 ): Promise<{ success: boolean; duplicate?: boolean; error?: string }> {
-  const voteType = pickVoteType("유머");  // 댓글은 업 90%
+  // 댓글은 up 90%, down 10% (유머 글이라 표기)
+  const voteType = Math.random() < 0.90 ? "up" : "down";
 
   const { data: existing } = await supabase
     .from("comment_votes")
@@ -164,6 +158,24 @@ async function voteOnComment(
     if (insertErr.code === "23505") return { success: false, duplicate: true };
     return { success: false, error: insertErr.message };
   }
+
+  // comments.upvotes/downvotes 카운터 업데이트 (기존 npc-cron과 동일 패턴)
+  const { count: upCount } = await supabase
+    .from("comment_votes")
+    .select("*", { count: "exact", head: true })
+    .eq("comment_id", commentId)
+    .eq("vote_type", "up");
+
+  const { count: downCount } = await supabase
+    .from("comment_votes")
+    .select("*", { count: "exact", head: true })
+    .eq("comment_id", commentId)
+    .eq("vote_type", "down");
+
+  await supabase
+    .from("comments")
+    .update({ upvotes: upCount || 0, downvotes: downCount || 0 })
+    .eq("id", commentId);
 
   // 페르소나 카운터
   await supabase
@@ -288,7 +300,7 @@ async function runVoteBotJob(): Promise<VoteBotSummary> {
       // 로드밸런싱으로 NPC 픽
       const npc = pickNpcByLoadBalance(eligible);
 
-      const result = await voteOnPost(supabase, npc, targetPost.id, targetPost.upvotes || 0, targetPost.category);
+      const result = await voteOnPost(supabase, npc, targetPost.id, targetPost.upvotes || 0);
 
       if (result.success) {
         summary.post_votes_created++;
