@@ -10,9 +10,9 @@
 
 - **RLS 정책 누락**
   - `follows` 외 `posts/comments/reactions/profiles/storage.objects` 정책이 마이그레이션에 없었다.
-  - 조치: `supabase/migrations/011_rls_write_cycle_policies.sql` 추가.
-  - 포함 내용: 익명 세션 guest 처리, general+ 쓰기 허용, 본인 UPDATE/DELETE, storage owner path 검사, reactions 중복 방지, 댓글/반응 카운터 트리거.
-  - 남은 검증: Supabase 원격 DB에 migration 적용 후 익명 세션에서 INSERT가 막히는지 확인 필요.
+  - 조치: `supabase/migrations/011_rls_write_cycle_policies.sql` 추가 및 public schema 1~7번 원격 적용 완료.
+  - 포함 내용: 익명 세션 guest 처리, general+ 쓰기 허용, 본인 UPDATE/DELETE, reactions 중복 방지, 댓글/반응 카운터 트리거.
+  - storage는 Supabase 권한 문제로 V1 008 정책 8개를 재사용한다. 출시 전 Storage Policies UI 또는 RPC wrapper로 tier 기반 강화가 필요하다.
 
 - **피드/상세 게시글 좋아요가 DB에 저장되지 않음**
   - `PostCard` 내부 state만 바뀌고 `useReaction`을 호출하지 않아 새로고침하면 좋아요가 사라질 수 있었다.
@@ -24,9 +24,10 @@
 
 ### 🟡 Major (1주 내 수정 권장)
 
-- **원격 DB migration 적용 전에는 클라이언트 보강만으로 안전하지 않음**
-  - `useTier`로 guest 쓰기를 막아도 우회 클라이언트는 RLS 없이는 쓰기 가능하다.
-  - 조치 파일은 작성 완료. 대웅이 Supabase migration 적용 여부를 확인해야 한다.
+- **storage 정책은 V2 tier 강화가 아직 아님**
+  - public schema RLS는 원격 적용됐지만 `storage.objects`는 owner 권한 부족으로 M011 강화 정책을 적용하지 못했다.
+  - 현재 V1 정책은 authenticated/owner path 체크가 있으나 `current_user_tier_rank() >= 1` 조건은 없다.
+  - 출시 전 Storage Policies UI에서 service role로 재시도하거나 RPC wrapper로 업로드 경로를 통제해야 한다.
 
 - **프로필 권한 상승 방어가 서버 trigger에 의존**
   - `profiles_update_own`만 있으면 악성 클라이언트가 `tier/grit_score/follower_count`를 직접 바꿀 수 있다.
@@ -65,12 +66,14 @@
 
 - `lib/errors.ts`: Supabase/네트워크 에러 메시지 변환 helper.
 - `lib/hooks/useFollow.ts`: follows INSERT/DELETE + 낙관적 팔로워 카운트 hook.
-- `supabase/migrations/011_rls_write_cycle_policies.sql`: RLS, storage 정책, reaction unique index, 카운터 트리거.
+- `supabase/migrations/011_rls_write_cycle_policies.sql`: public RLS, reaction unique index, 카운터 트리거. storage 8번은 V1 정책 재사용 메모로 정리.
 - `docs/audit_phase7a_findings.md`: 본 문서.
 
 ## 확인한 동작
 
 - `npx tsc --noEmit` 통과.
+- Supabase public schema M011 적용 검증 통과: helper function, RLS 5/5, 정책 25개, trigger 3개, reaction unique index.
+- Storage buckets 검증 통과: `avatars`, `post-images` 모두 `public=true`; 정책은 V1 008 정책 8개 재사용.
 - `usePostSubmit`: 이미지 업로드 중 발행 버튼 disabled, 동영상 빈 string은 `new.tsx`에서 `null`로 정리 후 전달.
 - `useCommentSubmit`: 댓글 작성 성공 시 `appendComment`로 즉시 리스트 반영.
 - `useReaction`: 실패 시 `onOptimistic(current, -delta)`로 롤백.
@@ -78,8 +81,8 @@
 
 ## 대웅에게 검증 요청 사항
 
-1. Supabase에 `011_rls_write_cycle_policies.sql` 적용 후 익명 세션에서 글/댓글/좋아요/팔로우가 거부되는지 확인.
+1. 익명 세션에서 글/댓글/좋아요/팔로우가 public RLS로 거부되는지 확인.
 2. 이메일/소셜 로그인 유저로 글쓰기 → 발행 → 상세 이동 → 홈 탭 복귀 시 새 글이 보이는지 확인.
 3. 홈 피드와 글 상세에서 좋아요를 누른 뒤 새로고침/재진입해도 상태와 카운트가 유지되는지 확인.
 4. 탐색 화면 추천 사장님 팔로우/언팔로우가 즉시 바뀌고, 재진입 후에도 유지되는지 확인.
-5. 이미지 업로드 실패/RLS 실패 시 영어 원문 대신 한글 안내가 나오는지 확인.
+5. 이미지 업로드는 V1 storage 정책 재사용 상태에서 정상 동작하는지 확인. 출시 전 storage tier 강화 별도 처리.

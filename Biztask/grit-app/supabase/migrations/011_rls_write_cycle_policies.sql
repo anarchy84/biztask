@@ -356,80 +356,15 @@ CREATE TRIGGER comments_count_trigger
   EXECUTE FUNCTION public.bump_post_comment_count();
 
 -- 8) Storage bucket + RLS
-INSERT INTO storage.buckets (id, name, public)
-VALUES
-  ('post-images', 'post-images', true),
-  ('avatars', 'avatars', true)
-ON CONFLICT (id) DO UPDATE
-SET public = EXCLUDED.public;
-
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "storage_post_images_select_public" ON storage.objects;
-DROP POLICY IF EXISTS "storage_post_images_insert_own" ON storage.objects;
-DROP POLICY IF EXISTS "storage_post_images_update_own" ON storage.objects;
-DROP POLICY IF EXISTS "storage_post_images_delete_own" ON storage.objects;
-DROP POLICY IF EXISTS "storage_avatars_select_public" ON storage.objects;
-DROP POLICY IF EXISTS "storage_avatars_insert_own" ON storage.objects;
-DROP POLICY IF EXISTS "storage_avatars_update_own" ON storage.objects;
-DROP POLICY IF EXISTS "storage_avatars_delete_own" ON storage.objects;
-
-CREATE POLICY "storage_post_images_select_public"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'post-images');
-
-CREATE POLICY "storage_post_images_insert_own"
-  ON storage.objects FOR INSERT
-  WITH CHECK (
-    bucket_id = 'post-images'
-    AND public.current_user_tier_rank() >= 1
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-CREATE POLICY "storage_post_images_update_own"
-  ON storage.objects FOR UPDATE
-  USING (
-    bucket_id = 'post-images'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  )
-  WITH CHECK (
-    bucket_id = 'post-images'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-CREATE POLICY "storage_post_images_delete_own"
-  ON storage.objects FOR DELETE
-  USING (
-    bucket_id = 'post-images'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-CREATE POLICY "storage_avatars_select_public"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'avatars');
-
-CREATE POLICY "storage_avatars_insert_own"
-  ON storage.objects FOR INSERT
-  WITH CHECK (
-    bucket_id = 'avatars'
-    AND public.current_user_tier_rank() >= 1
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-CREATE POLICY "storage_avatars_update_own"
-  ON storage.objects FOR UPDATE
-  USING (
-    bucket_id = 'avatars'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  )
-  WITH CHECK (
-    bucket_id = 'avatars'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-
-CREATE POLICY "storage_avatars_delete_own"
-  ON storage.objects FOR DELETE
-  USING (
-    bucket_id = 'avatars'
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
+-- 한글 주석: 2026-04-29 대웅+클로드 실행 결과, storage.objects는
+-- Supabase MCP/Dashboard SQL Editor 모두 owner 권한 부족으로 ALTER/DROP/CREATE POLICY 불가.
+-- 원격 DB는 V1 008_storage_buckets 정책 8개를 재사용한다.
+--
+-- 현재 운영 상태:
+--   - buckets: avatars, post-images 모두 public=true 확인 완료
+--   - 정책: avatars/post_images 각각 SELECT/INSERT/UPDATE/DELETE 기존 정책 존재
+--   - V1 정책은 authenticated 체크와 owner path 체크는 있지만 current_user_tier_rank() >= 1 강화는 없음
+--
+-- 영향:
+--   - 앱 UX 레벨에서는 useTier/useImageUpload가 익명 업로드를 차단한다.
+--   - 출시 전 Storage Policies UI 또는 RPC wrapper로 tier 기반 서버 강화 재시도 필요.
