@@ -4,7 +4,7 @@
 // ▣ 지원 범위: 관계성 캡션, 인증/업종/연차 뱃지, 다중 이미지, 동영상 썸네일,
 //   인용글 카드, 좋아요/댓글/인용/저장 카운터.
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native'
 import type { Post } from '@/lib/types'
 import { INDUSTRY_META } from '@/lib/types'
@@ -19,17 +19,41 @@ import TimeAgo from '@/components/common/TimeAgo'
 interface PostCardProps {
   post: Post
   onPress?: () => void
+  onLikePress?: (post: Post) => void
   compact?: boolean
   style?: ViewStyle
 }
 
 /** 한글 주석: 피드와 상세에서 공유하는 V2 게시글 카드. */
-export default function PostCard({ post, onPress, compact = false, style }: PostCardProps) {
+export default function PostCard({ post, onPress, onLikePress, compact = false, style }: PostCardProps) {
   const [liked, setLiked] = useState(post.myReaction === 'like')
+  const [localLikeDelta, setLocalLikeDelta] = useState(0)
   const [bookmarked, setBookmarked] = useState(false)
   const industryLabel = INDUSTRY_META[post.author.industry]?.label ?? '기타'
   const isVerified = post.author.tier === 'verified' || post.author.tier === 'blue' || Boolean(post.author.verifiedAt)
   const hasVideo = Boolean(post.videoThumbnailUrl || post.videoUrl)
+  const isLikeControlled = Boolean(onLikePress)
+  const displayLiked = isLikeControlled ? post.myReaction === 'like' : liked
+  const displayLikeCount = Math.max(0, post.likeCount + (isLikeControlled ? 0 : localLikeDelta))
+
+  useEffect(() => {
+    setLiked(post.myReaction === 'like')
+    setLocalLikeDelta(0)
+  }, [post.id, post.myReaction])
+
+  const handleLikePress = () => {
+    if (onLikePress) {
+      onLikePress(post)
+      return
+    }
+
+    setLiked((prev) => {
+      const next = !prev
+      const baseLiked = post.myReaction === 'like'
+      setLocalLikeDelta(next === baseLiked ? 0 : next ? 1 : -1)
+      return next
+    })
+  }
 
   return (
     <Pressable
@@ -129,11 +153,11 @@ export default function PostCard({ post, onPress, compact = false, style }: Post
         <ActionButton icon="💬" count={post.commentCount} label="댓글" />
         <ActionButton icon="↻" count={post.quoteCount} label="인용" accent={colors.brand[400]} />
         <ActionButton
-          icon={liked ? '♥' : '♡'}
-          count={post.likeCount + (liked && post.myReaction !== 'like' ? 1 : 0)}
+          icon={displayLiked ? '♥' : '♡'}
+          count={displayLikeCount}
           label="좋아요"
-          accent={liked ? colors.semantic.like : undefined}
-          onPress={() => setLiked((prev) => !prev)}
+          accent={displayLiked ? colors.semantic.like : undefined}
+          onPress={handleLikePress}
         />
         <ActionButton
           icon={bookmarked ? '▰' : '▱'}

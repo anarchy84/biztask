@@ -73,6 +73,20 @@ export default function PostDetailScreen() {
     })
   }
 
+  const handlePostReaction = () => {
+    if (!post) return
+    void toggle({
+      target: 'post',
+      targetId: post.id,
+      current: post.myReaction ?? null,
+      next: 'like',
+      onOptimistic: (nextMyReaction, likeDelta, dislikeDelta) => {
+        applyMyReaction('post', post.id, nextMyReaction)
+        applyReactionDelta('post', post.id, likeDelta, dislikeDelta)
+      },
+    })
+  }
+
   if (loading && !post) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -109,7 +123,7 @@ export default function PostDetailScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
         <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-          <PostCard post={post} />
+          <PostCard post={post} onLikePress={handlePostReaction} />
 
           <View style={styles.commentHeader}>
             <Text style={styles.commentHeaderText}>댓글 {post.commentCount}</Text>

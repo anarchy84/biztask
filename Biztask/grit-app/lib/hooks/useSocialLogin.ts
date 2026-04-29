@@ -24,6 +24,7 @@
 
 import { useCallback, useState } from 'react'
 import * as WebBrowser from 'expo-web-browser'
+import type { Provider } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { getAuthRedirectUrl } from '@/lib/authRedirect'
 import { setSupabaseSessionFromRedirectUrl } from '@/lib/oauthSession'
@@ -43,6 +44,13 @@ export interface UseSocialLoginReturn {
 
 // 한글 주석: WebBrowser 초기 세션 처리 (iOS에서 필요)
 WebBrowser.maybeCompleteAuthSession()
+
+// 한글 주석: UI 표기는 meta지만 Supabase OAuth provider id는 facebook이다.
+const SUPABASE_PROVIDER: Record<SocialProvider, Provider> = {
+  kakao: 'kakao',
+  google: 'google',
+  meta: 'facebook',
+}
 
 export function useSocialLogin(): UseSocialLoginReturn {
   const {
@@ -88,6 +96,7 @@ export function useSocialLogin(): UseSocialLoginReturn {
 
       try {
         const redirectTo = await getAuthRedirectUrl()
+        const oauthProvider = SUPABASE_PROVIDER[provider]
         console.log('[useSocialLogin] OAuth redirectTo:', redirectTo)
 
         // ─────────────────────────────────────────────
@@ -107,7 +116,7 @@ export function useSocialLogin(): UseSocialLoginReturn {
 
         const startOAuthSignIn = async () =>
           supabase.auth.signInWithOAuth({
-            provider,
+            provider: oauthProvider,
             options: {
               redirectTo,
               scopes,
@@ -121,7 +130,7 @@ export function useSocialLogin(): UseSocialLoginReturn {
         if (shouldLinkIdentity) {
           try {
             const linkResult = await supabase.auth.linkIdentity({
-              provider,
+              provider: oauthProvider,
               options: {
                 redirectTo,
                 scopes,

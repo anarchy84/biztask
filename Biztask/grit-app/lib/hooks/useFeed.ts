@@ -38,6 +38,12 @@ export interface UseFeedReturn {
   error: string | null
   refresh: () => Promise<void>
   loadMore: () => Promise<void>
+  applyPostReaction: (
+    postId: string,
+    reaction: 'like' | 'dislike' | null,
+    likeDelta: number,
+    dislikeDelta: number,
+  ) => void
 }
 
 export function useFeed(): UseFeedReturn {
@@ -122,6 +128,29 @@ export function useFeed(): UseFeedReturn {
     }
   }, [fetchPage, hasMore, loading, loadingMore, posts.length, refreshing])
 
+  const applyPostReaction = useCallback(
+    (
+      postId: string,
+      reaction: 'like' | 'dislike' | null,
+      likeDelta: number,
+      dislikeDelta: number,
+    ) => {
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId
+            ? {
+                ...post,
+                myReaction: reaction,
+                likeCount: Math.max(0, post.likeCount + likeDelta),
+                dislikeCount: Math.max(0, post.dislikeCount + dislikeDelta),
+              }
+            : post,
+        ),
+      )
+    },
+    [],
+  )
+
   useEffect(() => {
     setLoading(true)
     void refresh()
@@ -138,6 +167,7 @@ export function useFeed(): UseFeedReturn {
     error,
     refresh,
     loadMore,
+    applyPostReaction,
   }
 }
 

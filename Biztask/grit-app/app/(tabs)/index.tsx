@@ -3,16 +3,17 @@
 // ▣ get_feed_ranked RPC를 우선 사용하고, 없으면 최신순 fallback을 쓴다.
 // ▣ 칩 필터는 Phase 7 알고리즘 연결 전까지 UI 상태만 바꾼다.
 
-import React from 'react'
+import React, { useCallback } from 'react'
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { colors } from '@/constants/colors'
 import { typography } from '@/constants/typography'
 import { radius, spacing } from '@/constants/spacing'
 import { FEED_FILTER_LABELS, type FeedFilter, type Post } from '@/lib/types'
 import { useFeed } from '@/lib/hooks/useFeed'
 import { useTier } from '@/lib/hooks/useTier'
+import { useReaction } from '@/lib/hooks/useReaction'
 import PostCard from '@/components/feed/PostCard'
 import SecretLoungeBanner from '@/components/feed/SecretLoungeBanner'
 
@@ -30,7 +31,30 @@ export default function HomeFeedScreen() {
     error,
     refresh,
     loadMore,
+    applyPostReaction,
   } = useFeed()
+  const { toggle } = useReaction()
+
+  const handlePostLike = useCallback(
+    (post: Post) => {
+      void toggle({
+        target: 'post',
+        targetId: post.id,
+        current: post.myReaction ?? null,
+        next: 'like',
+        onOptimistic: (nextMyReaction, likeDelta, dislikeDelta) => {
+          applyPostReaction(post.id, nextMyReaction, likeDelta, dislikeDelta)
+        },
+      })
+    },
+    [applyPostReaction, toggle],
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh()
+    }, [refresh]),
+  )
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -39,9 +63,18 @@ export default function HomeFeedScreen() {
           <Text style={styles.logoGlyph}>그</Text>
         </View>
         <Text style={styles.logoText}>그릿</Text>
-        {/* 한글 주석: 글쓰기는 가운데 탭, 검색은 탐색 탭에 통합됨
-              헤더 우상단은 시크릿 라운지 빠른 진입점 (자물쇠) */}
+        {/* 한글 주석: 게스트는 글쓰기 CTA를 숨기고, 시크릿 라운지는 빠른 진입점으로 유지한다. */}
         <View style={styles.headerActions}>
+          {canWritePost ? (
+            <Pressable
+              style={styles.writeButton}
+              onPress={() => router.push('/post/new' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="새 글 쓰기"
+            >
+              <Text style={styles.writeButtonText}>＋</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={styles.iconButton}
             onPress={() => router.push('/(tabs)/lounge' as any)}
@@ -66,7 +99,7 @@ export default function HomeFeedScreen() {
         <FlatList
           data={posts}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FeedItem post={item} />}
+          renderItem={({ item }) => <FeedItem post={item} onLike={handlePostLike} />}
           contentContainerStyle={styles.feedContent}
           contentInsetAdjustmentBehavior="automatic"
           refreshControl={
@@ -105,11 +138,12 @@ export default function HomeFeedScreen() {
   )
 }
 
-function FeedItem({ post }: { post: Post }) {
+function FeedItem({ post, onLike }: { post: Post; onLike: (post: Post) => void }) {
   return (
     <PostCard
       post={post}
       onPress={() => router.push(`/post/${post.id}` as any)}
+      onLikePress={onLike}
     />
   )
 }

@@ -24,6 +24,8 @@
 import { useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTier } from '@/lib/hooks/useTier'
+import { toUserFacingError } from '@/lib/errors'
 
 type ReactionType = 'like' | 'dislike'
 type TargetType = 'post' | 'comment'
@@ -46,6 +48,7 @@ export interface ToggleArgs {
 
 export function useReaction() {
   const { user } = useAuth()
+  const { canReact } = useTier()
 
   // ─────────────────────────────────────────────
   // 한글 주석: 토글 핵심 로직
@@ -55,6 +58,10 @@ export function useReaction() {
     async ({ target, targetId, current, next, onOptimistic, onError }: ToggleArgs) => {
       if (!user?.id) {
         onError?.(new Error('로그인이 필요해 (익명 세션도 없음)'))
+        return
+      }
+      if (!canReact) {
+        onError?.(new Error('소셜 로그인 후 좋아요를 누를 수 있어'))
         return
       }
 
@@ -129,14 +136,14 @@ export function useReaction() {
         }
         // (existing.type === nextMyReaction 이면 이미 UI 낙관적 업데이트로 같은 상태 만든 뒤 여기 도달하지 않음)
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '알 수 없는 에러'
+        const msg = toUserFacingError(e, '반응 저장에 실패했어')
         console.error('[useReaction] 토글 실패:', msg)
         // 한글 주석: 롤백 - 반대 방향으로 델타 다시 호출
         onOptimistic?.(current ?? null, -likeDelta, -dislikeDelta)
         onError?.(new Error(msg))
       }
     },
-    [user?.id],
+    [canReact, user?.id],
   )
 
   return { toggle }

@@ -26,6 +26,7 @@ import * as ImageManipulator from 'expo-image-manipulator'
 import * as FileSystem from 'expo-file-system'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { toUserFacingError } from '@/lib/errors'
 
 // 한글 주석: 지원 버킷 (Storage 정책에 등록된 것만)
 export type StorageBucket = 'post-images' | 'avatars'
@@ -164,7 +165,7 @@ export function useImageUpload({
 
       return urlData.publicUrl
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '알 수 없는 에러'
+      const msg = toUserFacingError(e, '이미지 업로드에 실패했어')
       console.error('[useImageUpload] 실패:', msg)
       setError(msg)
       return null
@@ -262,7 +263,7 @@ export function useImageUpload({
 
         return urls
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '알 수 없는 에러'
+        const msg = toUserFacingError(e, '이미지 업로드에 실패했어')
         console.error('[useImageUpload.multiple] 실패:', msg)
         setError(msg)
         return []

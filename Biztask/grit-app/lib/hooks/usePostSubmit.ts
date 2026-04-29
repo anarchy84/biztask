@@ -16,6 +16,8 @@ import { supabase } from '@/lib/supabase'
 import { mapPost, type PostRowWithAuthor } from '@/lib/mappers'
 import type { Post, Category } from '@/lib/types'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTier } from '@/lib/hooks/useTier'
+import { toUserFacingError } from '@/lib/errors'
 
 // 한글 주석: 실제 DB에 저장 가능한 카테고리 (hot·all은 필터용이라 제외)
 type WritableCategory = Exclude<Category, 'all' | 'hot'>
@@ -25,6 +27,7 @@ const TITLE_MIN = 2
 const TITLE_MAX = 50
 const BODY_MIN = 5
 const BODY_MAX = 2000
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export interface PostSubmitInput {
   title: string
@@ -52,6 +55,7 @@ export function usePostSubmit({
   onSuccess,
 }: UsePostSubmitArgs = {}): UsePostSubmitReturn {
   const { user } = useAuth()
+  const { canWritePost } = useTier()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -85,6 +89,16 @@ export function usePostSubmit({
         setError('로그인 세션이 없어. 앱 재실행 후 다시 시도해줘')
         return null
       }
+      if (!canWritePost) {
+        setError('소셜 로그인 후 글을 쓸 수 있어')
+        return null
+      }
+
+      const quotedPostId = input.quotedPostId?.trim() || null
+      if (quotedPostId && !UUID_RE.test(quotedPostId)) {
+        setError('인용할 글 ID 형식이 올바르지 않아')
+        return null
+      }
 
       setSubmitting(true)
 
@@ -104,8 +118,8 @@ export function usePostSubmit({
             image_urls: input.imageUrls ?? (input.imageUrl ? [input.imageUrl] : []),
             video_url: input.videoUrl ?? null,
             video_thumbnail_url: input.videoThumbnailUrl ?? null,
-            quoted_post_id: input.quotedPostId ?? null,
-            is_quote: Boolean(input.quotedPostId),
+            quoted_post_id: quotedPostId,
+            is_quote: Boolean(quotedPostId),
           })
           // 한글 주석: PostgREST self-relation cache 회피 (useFeed/usePost와 동일)
           //   인용글 본문은 별도 fetch로 분리 (Phase 6)
@@ -120,7 +134,7 @@ export function usePostSubmit({
 
         return mapped
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '알 수 없는 에러'
+        const msg = toUserFacingError(e, '글 작성에 실패했어')
         console.error('[usePostSubmit] 글 작성 실패:', msg)
         setError(msg)
         return null
@@ -128,7 +142,7 @@ export function usePostSubmit({
         setSubmitting(false)
       }
     },
-    [user?.id, onSuccess],
+    [canWritePost, user?.id, onSuccess],
   )
 
   const clearError = useCallback(() => setError(null), [])

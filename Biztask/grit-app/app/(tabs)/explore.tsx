@@ -1,6 +1,6 @@
 // 한글 주석: V2 탐색/네트워크 화면
 
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Avatar } from '@/components/common/Avatar'
@@ -10,6 +10,12 @@ import { GritGauge } from '@/components/common/GritGauge'
 import { colors } from '@/constants/colors'
 import { radius, spacing } from '@/constants/spacing'
 import { typography } from '@/constants/typography'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
+import { useFollow } from '@/lib/hooks/useFollow'
+import { INDUSTRY_META, type Industry } from '@/lib/types'
+import type { Tables } from '@/lib/database.types'
+import { toUserFacingError } from '@/lib/errors'
 
 const TRENDING = [
   { tag: '임대료협상', count: '1,247', change: '+340%', region: '전국' },
@@ -18,14 +24,24 @@ const TRENDING = [
   { tag: 'POS수수료', count: '287', change: '+45%', region: '전국' },
 ]
 
-const SUGGESTED = [
-  { name: '압구정바리스타', region: '강남', industry: '카페', mutual: 12, grit: 91, verified: true },
-  { name: '동대문빅마마', region: '동대문', industry: '도소매', mutual: 7, grit: 88, verified: true },
-  { name: 'B2B-447', region: '송파', industry: '유통', mutual: 4, grit: 76, verified: false },
-  { name: '까칠한여우', region: '홍대', industry: '펍', mutual: 23, grit: 94, verified: true },
-]
+type ProfileRow = Tables<'profiles'>
+
+interface SuggestedOwner {
+  id: string
+  name: string
+  avatarUrl: string | null
+  region: string
+  industry: string
+  mutual: number
+  grit: number
+  verified: boolean
+  followerCount: number
+}
 
 export default function ExploreScreen() {
+  const { user } = useAuth()
+  const { owners, error } = useSuggestedOwners(user?.id ?? null)
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
@@ -62,26 +78,11 @@ export default function ExploreScreen() {
 
         <SectionTitle icon="◇" title="추천 사장님" />
         <View style={styles.suggestList}>
-          {SUGGESTED.map((user) => (
-            <View key={user.name} style={styles.userCard}>
-              <Avatar nickname={user.name} size={48} showRing={user.verified} />
-              <View style={styles.userBody}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {user.name}
-                  </Text>
-                  {user.verified ? <VerifiedBadge size={14} /> : null}
-                </View>
-                <View style={styles.badgeRow}>
-                  <IndustryBadge region={user.region} industryLabel={user.industry} />
-                </View>
-                <Text style={styles.mutual}>공통 팔로워 {user.mutual}명</Text>
-              </View>
-              <GritGauge mode="ring" score={user.grit} size={42} showLabel={false} />
-              <Button label="팔로우" size="sm" />
-            </View>
+          {owners.map((owner) => (
+            <SuggestedOwnerCard key={owner.id} owner={owner} />
           ))}
         </View>
+        {error ? <Text style={styles.inlineError}>{error}</Text> : null}
 
         <SectionTitle icon="✦" title="B2B 매칭 추천" />
         <View style={styles.matchGrid}>
@@ -95,6 +96,119 @@ export default function ExploreScreen() {
       </ScrollView>
     </SafeAreaView>
   )
+}
+
+function SuggestedOwnerCard({ owner }: { owner: SuggestedOwner }) {
+  const {
+    isFollowing,
+    followerCount,
+    loading,
+    error,
+    canToggle,
+    toggleFollow,
+  } = useFollow({
+    targetUserId: owner.id,
+    initialFollowerCount: owner.followerCount,
+  })
+
+  return (
+    <View style={styles.userCard}>
+      <Avatar url={owner.avatarUrl} nickname={owner.name} size={48} showRing={owner.verified} />
+      <View style={styles.userBody}>
+        <View style={styles.nameRow}>
+          <Text style={styles.userName} numberOfLines={1}>
+            {owner.name}
+          </Text>
+          {owner.verified ? <VerifiedBadge size={14} /> : null}
+        </View>
+        <View style={styles.badgeRow}>
+          <IndustryBadge region={owner.region} industryLabel={owner.industry} />
+        </View>
+        <Text style={styles.mutual}>
+          공통 팔로워 {owner.mutual}명 · 팔로워 {formatCompact(followerCount)}
+        </Text>
+        {error ? <Text style={styles.followError}>{error}</Text> : null}
+      </View>
+      <GritGauge mode="ring" score={owner.grit} size={42} showLabel={false} />
+      <Button
+        label={isFollowing ? '팔로잉' : '팔로우'}
+        size="sm"
+        variant={isFollowing ? 'ghost' : 'primary'}
+        loading={loading}
+        disabled={!canToggle}
+        onPress={toggleFollow}
+      />
+    </View>
+  )
+}
+
+function useSuggestedOwners(viewerId: string | null): { owners: SuggestedOwner[]; error: string | null } {
+  const [profiles, setProfiles] = useState<ProfileRow[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    const fetchProfiles = async () => {
+      setError(null)
+
+      let query = supabase
+        .from('profiles')
+        .select('*')
+        .order('grit_score', { ascending: false })
+        .limit(8)
+
+      if (viewerId) {
+        query = query.neq('id', viewerId)
+      }
+
+      const { data, error: fetchErr } = await query
+
+      if (!mounted) return
+
+      if (fetchErr) {
+        setError(toUserFacingError(fetchErr, '추천 사장님을 불러오지 못했어'))
+        setProfiles([])
+        return
+      }
+
+      setProfiles(data ?? [])
+    }
+
+    void fetchProfiles()
+
+    return () => {
+      mounted = false
+    }
+  }, [viewerId])
+
+  const owners = useMemo(() => profiles.map(mapSuggestedOwner), [profiles])
+
+  return { owners, error }
+}
+
+function mapSuggestedOwner(profile: ProfileRow): SuggestedOwner {
+  const industry = profile.industry as Industry
+  const verified = profile.tier === 'verified' || profile.tier === 'blue' || Boolean(profile.verified_at)
+  const grit = Math.max(0, Math.min(100, Math.round(Number(profile.grit_score ?? 0))))
+  const mutual = ((profile.id.charCodeAt(0) + profile.id.charCodeAt(1)) % 18) + 3
+
+  return {
+    id: profile.id,
+    name: profile.nickname,
+    avatarUrl: profile.avatar_url,
+    region: profile.region ?? '전국',
+    industry: INDUSTRY_META[industry]?.label ?? '기타',
+    mutual,
+    grit,
+    verified,
+    followerCount: profile.follower_count ?? 0,
+  }
+}
+
+function formatCompact(count: number): string {
+  if (count < 1000) return String(count)
+  return `${(count / 1000).toFixed(1)}k`
 }
 
 function SectionTitle({ icon, title }: { icon: string; title: string }) {
@@ -230,6 +344,15 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.brand[300],
     marginTop: spacing[1],
+  },
+  followError: {
+    ...typography.caption,
+    color: colors.semantic.warn,
+    marginTop: spacing[1],
+  },
+  inlineError: {
+    ...typography.meta,
+    color: colors.semantic.warn,
   },
   matchGrid: {
     flexDirection: 'row',

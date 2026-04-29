@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase'
 import { mapComment, type CommentRowWithAuthor } from '@/lib/mappers'
 import type { Comment } from '@/lib/types'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTier } from '@/lib/hooks/useTier'
+import { toUserFacingError } from '@/lib/errors'
 
 export interface UseCommentSubmitArgs {
   postId: string
@@ -40,6 +42,7 @@ export function useCommentSubmit({
   onSuccess,
 }: UseCommentSubmitArgs): UseCommentSubmitReturn {
   const { user } = useAuth()
+  const { canWritePost } = useTier()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,6 +64,10 @@ export function useCommentSubmit({
       }
       if (!user?.id) {
         setError('로그인 세션이 없어. 앱 재실행 후 다시 시도해줘')
+        return false
+      }
+      if (!canWritePost) {
+        setError('소셜 로그인 후 댓글을 쓸 수 있어')
         return false
       }
 
@@ -92,7 +99,7 @@ export function useCommentSubmit({
 
         return true
       } catch (e) {
-        const msg = e instanceof Error ? e.message : '알 수 없는 에러'
+        const msg = toUserFacingError(e, '댓글 작성에 실패했어')
         console.error('[useCommentSubmit] 댓글 작성 실패:', msg)
         setError(msg)
         return false
@@ -100,7 +107,7 @@ export function useCommentSubmit({
         setSubmitting(false)
       }
     },
-    [postId, user?.id, onSuccess],
+    [canWritePost, postId, user?.id, onSuccess],
   )
 
   const clearError = useCallback(() => setError(null), [])
